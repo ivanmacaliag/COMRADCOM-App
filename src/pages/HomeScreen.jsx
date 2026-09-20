@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Mic, Volume2, Wifi, Activity, Battery, ShieldAlert, ChevronDown, Radio } from 'lucide-react';
 import { mockChannels } from '../data/mockData';
 
-export function HomeScreen({ isConnected, isTransmitting, isReceiving, onPttStart, onPttStop }) {
+export function HomeScreen({ isConnected, isTransmitting, isReceiving, onPttStart, onPttStop, pttStatus }) {
   const [showChannels, setShowChannels] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState(mockChannels[0]);
   const [latency, setLatency] = useState(28);
@@ -72,6 +72,7 @@ export function HomeScreen({ isConnected, isTransmitting, isReceiving, onPttStar
           ● RECEIVING VOICE
         </div>
       )}
+      {pttStatus && !isTransmitting && <div className="max-w-sm text-center text-xs font-bold text-tertiary">{pttStatus}</div>}
 
       {/* PTT Button Area */}
       <div className="flex-1 flex items-center justify-center relative w-full min-h-[280px]">

@@ -15,6 +15,7 @@ function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [status, setStatus] = useState('Connecting...');
   const [isRecording, setIsRecording] = useState(false);
+  const [pttStatus, setPttStatus] = useState('');
   const [loginOpen, setLoginOpen] = useState(false);
   const [loginStatus, setLoginStatus] = useState('');
   const [operatorName, setOperatorName] = useState('Operator');
@@ -25,6 +26,7 @@ function App() {
   const audioRef = useRef(null);
   const playerRef = useRef(null);
   const locationWatchRef = useRef(null);
+  const pttRequestedRef = useRef(false);
 
   useEffect(() => {
     audioRef.current = new AudioService();
@@ -157,6 +159,7 @@ function App() {
 
   const handlePttStart = async () => {
     if (!isConnected) return;
+    pttRequestedRef.current = true;
     
     // Ensure player is initialized/resumed on user interaction
     if (playerRef.current) {
@@ -165,18 +168,33 @@ function App() {
     }
 
     try {
-      setIsRecording(true);
+      setPttStatus('Opening radio channel…');
+      await zelloRef.current.startStream('146.020 Mhz');
+      if (!pttRequestedRef.current) {
+        zelloRef.current.stopStream();
+        return;
+      }
       await audioRef.current.startRecording();
-      zelloRef.current.startStream('146.020 Mhz');
+      if (!pttRequestedRef.current) {
+        audioRef.current.stopRecording();
+        zelloRef.current.stopStream();
+        return;
+      }
+      setIsRecording(true);
+      setPttStatus('Transmitting live');
     } catch (err) {
       console.error(err);
       setIsRecording(false);
+      setPttStatus(`PTT unavailable: ${err.message || 'check microphone permission and channel access.'}`);
+      zelloRef.current?.stopStream();
     }
   };
 
   const handlePttStop = () => {
+    pttRequestedRef.current = false;
     if (!isRecording) return;
     setIsRecording(false);
+    setPttStatus('');
     audioRef.current.stopRecording();
     zelloRef.current.stopStream();
   };
@@ -191,6 +209,7 @@ function App() {
             isReceiving={false} 
             onPttStart={handlePttStart} 
             onPttStop={handlePttStop} 
+            pttStatus={pttStatus}
           />
         );
       case 'Members':

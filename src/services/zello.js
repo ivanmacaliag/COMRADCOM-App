@@ -6,7 +6,8 @@ export class ZelloService {
     this.ws = null;
     this.onMessage = null;
     this.onStatus = null;
-    this.nextSequence = 3;
+    this.nextSequence = 2;
+    this.pendingRequests = new Map();
   }
 
   connect() {
@@ -89,9 +90,11 @@ export class ZelloService {
         this.onStatus(`Authentication failed${data.error ? `: ${data.error}` : '. Check your username and password.'}`);
       }
     }
-    // Sequence 2 is our start_stream command
-    if (data.seq === 2 && data.success) {
-      this.currentStreamId = data.stream_id;
+    const pending = this.pendingRequests.get(data.seq);
+    if (pending) {
+      this.pendingRequests.delete(data.seq);
+      if (data.success) pending.resolve(data);
+      else pending.reject(new Error(data.error || data.error_message || 'Zello rejected the request.'));
     }
   }
 
@@ -110,11 +113,12 @@ export class ZelloService {
 
   startStream(channel) {
     this.packetId = 0;
+    const seq = this.nextSequence++;
     // Command to start an outgoing audio stream
     // codec_header for 16000Hz, 1 frame/packet, 20ms frame size: [128, 62, 1, 20] -> gD4BFA==
     const startCmd = {
       command: 'start_stream',
-      seq: 2,
+      seq,
       type: 'audio',
       req_target: {
         type: 'channel',
@@ -124,7 +128,14 @@ export class ZelloService {
       codec_header: 'gD4BFA==', 
       packet_duration: 20
     };
-    this.ws.send(JSON.stringify(startCmd));
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return Promise.reject(new Error('Zello is not connected.'));
+    return new Promise((resolve, reject) => {
+      this.pendingRequests.set(seq, {
+        resolve: (data) => { this.currentStreamId = data.stream_id; resolve(data); },
+        reject
+      });
+      this.ws.send(JSON.stringify(startCmd));
+    });
   }
 
   sendAudioChunk(opusPayload) {
@@ -155,7 +166,7 @@ export class ZelloService {
     if (!this.currentStreamId) return;
     const stopCmd = {
       command: 'stop_stream',
-      seq: 3,
+      seq: this.nextSequence++,
       stream_id: this.currentStreamId
     };
     this.ws.send(JSON.stringify(stopCmd));
