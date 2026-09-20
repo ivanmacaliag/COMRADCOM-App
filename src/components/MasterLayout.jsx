@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Radio, Users, AlertTriangle, Globe, Rss, UserCircle, LayoutDashboard,
-  LogIn, PowerOff, MoreVertical, X
+  LogIn, PowerOff, MoreVertical, X, ShieldCheck, RadioTower, LockKeyhole
 } from 'lucide-react';
 
 export function MasterLayout({ 
@@ -167,30 +167,26 @@ export function MasterLayout({
       </div>
 
       {loginOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4">
-          <form onSubmit={submitLogin} className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
-            <div className="mb-5">
-              <h2 className="text-xl font-black text-slate-900">COMRADCOM Login</h2>
-              <p className="mt-1 text-sm text-slate-500">Enter the account details provided to you.</p>
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-100">
+          <div className="mx-auto flex min-h-full max-w-6xl items-center p-4 sm:p-8">
+            <div className="grid w-full overflow-hidden rounded-3xl bg-white shadow-2xl lg:grid-cols-[1.05fr_0.95fr]">
+              <section className="hidden bg-gradient-to-br from-[#002b5d] via-primary to-[#0a6ac4] p-10 text-white lg:flex lg:flex-col lg:justify-between">
+                <div className="flex items-center gap-3"><img src="/comradcom-logo.png" alt="COMRADCOM" className="h-12 w-12 rounded-full bg-white object-cover" /><div><p className="text-sm font-black tracking-[0.16em]">COMRADCOM</p><p className="text-xs text-white/65">Network Philippines Inc.</p></div></div>
+                <div><p className="text-xs font-black tracking-[0.2em] text-white/60">SECURE OPERATIONS ACCESS</p><h1 className="mt-3 max-w-md text-4xl font-black leading-tight">Connected when your community needs you.</h1><p className="mt-5 max-w-md text-sm leading-relaxed text-white/75">Sign in with your issued Zello Work account to access communications, members, alerts, and field operations.</p></div>
+                <div className="flex gap-5 text-xs text-white/70"><span className="flex items-center gap-2"><ShieldCheck size={17} /> Secure connection</span><span className="flex items-center gap-2"><RadioTower size={17} /> COMRADCOM network</span></div>
+              </section>
+              <form onSubmit={submitLogin} className="mx-auto w-full max-w-md p-6 sm:p-10 lg:py-14">
+                <div className="mb-8 text-center lg:text-left"><div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 lg:hidden"><img src="/comradcom-logo.png" alt="COMRADCOM" className="h-full w-full rounded-2xl object-cover" /></div><p className="text-[10px] font-black tracking-[0.2em] text-primary">OPERATOR LOGIN</p><h2 className="mt-2 text-3xl font-black text-slate-900">Welcome back</h2><p className="mt-2 text-sm leading-relaxed text-slate-500">Enter the credentials provided by your COMRADCOM administrator.</p></div>
+                <label className="mb-4 block text-sm font-bold text-slate-700">Network<div className="mt-1.5 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-slate-600"><RadioTower size={16} className="text-primary" /><span>comradcom</span></div></label>
+                <label className="mb-4 block text-sm font-bold text-slate-700">Username<input autoFocus autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-3 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" /></label>
+                <label className="mb-6 block text-sm font-bold text-slate-700">Password<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-3 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" /></label>
+                {loginStatus && <p role="status" className={`mb-4 rounded-xl p-3 text-xs font-semibold ${loginStatus.includes('failed') || loginStatus.includes('Error') ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-primary'}`}>{loginStatus}</p>}
+                <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3.5 text-sm font-black text-white shadow-lg shadow-primary/25 transition hover:bg-primary-light"><LockKeyhole size={16} /> Sign in to COMRADCOM</button>
+                {isConnected && <button type="button" onClick={onLoginClose} className="mt-3 w-full rounded-xl px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100">Return to dashboard</button>}
+                <p className="mt-6 text-center text-[11px] leading-relaxed text-slate-400">Your session remains on this device until you choose Logout.</p>
+              </form>
             </div>
-            <label className="mb-4 block text-sm font-bold text-slate-700">
-              Network
-              <input value="comradcom" readOnly className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2.5 text-slate-600" />
-            </label>
-            <label className="mb-4 block text-sm font-bold text-slate-700">
-              Username
-              <input autoFocus autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-primary" />
-            </label>
-            <label className="mb-6 block text-sm font-bold text-slate-700">
-              Password
-              <input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-primary" />
-            </label>
-            {loginStatus && <p className={`mb-4 rounded-lg p-3 text-xs font-semibold ${loginStatus.includes('failed') || loginStatus.includes('Error') ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-primary'}`}>{loginStatus}</p>}
-            <div className="flex justify-end gap-3">
-              <button type="button" onClick={onLoginClose} className="rounded-lg px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100">Cancel</button>
-              <button type="submit" className="rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-white hover:opacity-90">Login</button>
-            </div>
-          </form>
+          </div>
         </div>
       )}
 

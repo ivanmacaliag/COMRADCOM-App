@@ -51,7 +51,10 @@ function App() {
         if (credentials.username && credentials.password) handleConnect(credentials, false);
       } catch {
         localStorage.removeItem('comradcom-login');
+        setLoginOpen(true);
       }
+    } else {
+      setLoginOpen(true);
     }
   }, []);
 
@@ -93,6 +96,7 @@ function App() {
         setIsConnected(false);
         localStorage.removeItem('comradcom-login');
         setLoginStatus(newStatus);
+        setLoginOpen(true);
       } else {
         setLoginStatus(newStatus);
       }
@@ -224,7 +228,7 @@ function App() {
       onDisconnect={handleDisconnect}
       onExit={handleExit}
       loginOpen={loginOpen}
-      onLoginClose={() => { setLoginOpen(false); setLoginStatus(''); }}
+      onLoginClose={() => { if (isConnected) { setLoginOpen(false); setLoginStatus(''); } }}
       onLoginSubmit={handleConnect}
       loginStatus={loginStatus}
     >
