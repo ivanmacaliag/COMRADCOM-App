@@ -96,6 +96,10 @@ export class ZelloService {
       if (data.success) pending.resolve(data);
       else pending.reject(new Error(data.error || data.error_message || 'Zello rejected the request.'));
     }
+    if (data.command === 'on_error') {
+      this.pendingRequests.forEach(({ reject }) => reject(new Error(data.error || 'Zello server error.')));
+      this.pendingRequests.clear();
+    }
   }
 
   sendLocation({ latitude, longitude, accuracy }) {
@@ -119,20 +123,23 @@ export class ZelloService {
     const startCmd = {
       command: 'start_stream',
       seq,
+      channel,
       type: 'audio',
-      req_target: {
-        type: 'channel',
-        name: channel
-      },
       codec: 'opus',
       codec_header: 'gD4BFA==', 
       packet_duration: 20
     };
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return Promise.reject(new Error('Zello is not connected.'));
     return new Promise((resolve, reject) => {
+      const timeoutId = window.setTimeout(() => {
+        if (this.pendingRequests.has(seq)) {
+          this.pendingRequests.delete(seq);
+          reject(new Error('Zello did not open the radio channel. Check channel access and connection.'));
+        }
+      }, 8000);
       this.pendingRequests.set(seq, {
-        resolve: (data) => { this.currentStreamId = data.stream_id; resolve(data); },
-        reject
+        resolve: (data) => { window.clearTimeout(timeoutId); this.currentStreamId = data.stream_id; resolve(data); },
+        reject: (error) => { window.clearTimeout(timeoutId); reject(error); }
       });
       this.ws.send(JSON.stringify(startCmd));
     });
@@ -142,17 +149,15 @@ export class ZelloService {
     if (this.ws && this.ws.readyState === WebSocket.OPEN && this.currentStreamId) {
       this.packetId++;
       
-      // Zello requires a 9-byte or 8-byte header depending on the exact spec version
-      // Standard is: Stream ID (4 bytes LE) + Packet ID (4 bytes LE) + Payload
-      const headerLength = 8; 
+      // Zello Channel API: type (0x01) + stream ID + packet ID in network byte order.
+      // packet ID is ignored for client-to-server audio and must be all zeroes.
+      const headerLength = 9;
       const buffer = new ArrayBuffer(headerLength + opusPayload.byteLength);
       const view = new DataView(buffer);
       
-      // Write Stream ID (32-bit Little Endian)
-      view.setUint32(0, this.currentStreamId, true);
-      
-      // Write Packet ID (32-bit Little Endian)
-      view.setUint32(4, this.packetId, true);
+      view.setUint8(0, 0x01);
+      view.setUint32(1, this.currentStreamId, false);
+      view.setUint32(5, 0, false);
       
       // Write Opus Payload
       const payloadView = new Uint8Array(buffer, headerLength);
@@ -167,7 +172,8 @@ export class ZelloService {
     const stopCmd = {
       command: 'stop_stream',
       seq: this.nextSequence++,
-      stream_id: this.currentStreamId
+      stream_id: this.currentStreamId,
+      channel: '146.020 Mhz'
     };
     this.ws.send(JSON.stringify(stopCmd));
     this.currentStreamId = null;

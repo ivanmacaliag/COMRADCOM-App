@@ -33,9 +33,9 @@ function App() {
     playerRef.current = new PlayerService();
 
     audioRef.current.onAudioData = (buffer) => {
-      if (zelloRef.current && isConnected) {
-        zelloRef.current.sendAudioChunk(buffer);
-      }
+      // Do not read React state here: this callback is installed once and would
+      // otherwise retain the initial `isConnected === false` value forever.
+      zelloRef.current?.sendAudioChunk(buffer);
     };
 
     return () => {
@@ -46,18 +46,23 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const savedLogin = localStorage.getItem('comradcom-login');
-    if (savedLogin) {
-      try {
-        const credentials = JSON.parse(savedLogin);
-        if (credentials.username && credentials.password) handleConnect(credentials, false);
-      } catch {
-        localStorage.removeItem('comradcom-login');
+    // Deferring one tick avoids React development Strict Mode opening a socket
+    // that its verification cleanup immediately closes.
+    const timer = window.setTimeout(() => {
+      const savedLogin = localStorage.getItem('comradcom-login');
+      if (savedLogin) {
+        try {
+          const credentials = JSON.parse(savedLogin);
+          if (credentials.username && credentials.password) handleConnect(credentials, false);
+        } catch {
+          localStorage.removeItem('comradcom-login');
+          setLoginOpen(true);
+        }
+      } else {
         setLoginOpen(true);
       }
-    } else {
-      setLoginOpen(true);
-    }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const handleConnect = async ({ username, password }, userInitiated = true) => {
