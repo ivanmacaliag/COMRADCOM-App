@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Volume2, Wifi, Activity, Battery, ShieldAlert, ChevronDown, Radio } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Mic, Volume2, Wifi, Activity, ShieldAlert, ChevronDown } from 'lucide-react';
 import { mockChannels } from '../data/mockData';
 
 export function HomeScreen({ isConnected, isTransmitting, isReceiving, onPttStart, onPttStop, pttStatus }) {
@@ -38,7 +38,7 @@ export function HomeScreen({ isConnected, isTransmitting, isReceiving, onPttStar
             {[1, 2, 3, 4].map((bar) => (
               <div 
                 key={bar} 
-                className={`w-[4px] rounded-full transition-colors ${isConnected && bar <= 3 ? 'bg-secondary' : 'bg-gray-200'}`} 
+                className={`w-[4px] rounded-full transition-colors ${isConnected && bar <= 3 ? 'bg-green-600' : 'bg-gray-200'}`} 
                 style={{ height: `${bar * 25}%` }} 
               />
             ))}
@@ -63,36 +63,40 @@ export function HomeScreen({ isConnected, isTransmitting, isReceiving, onPttStar
 
       {/* Transmitting / Receiving Label */}
       {isTransmitting && (
-        <div className="text-tertiary font-black text-xs tracking-[0.15em] animate-pulse">
+        <div className="text-red-600 font-black text-xs tracking-[0.15em] animate-pulse flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-red-600 animate-ping" />
           ● TRANSMITTING LIVE
         </div>
       )}
       {isReceiving && (
-        <div className="text-secondary font-black text-xs tracking-[0.15em] animate-pulse">
-          ● RECEIVING VOICE
+        <div className="text-green-600 font-black text-xs tracking-[0.15em] animate-pulse flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-green-500 animate-ping" />
+          ● RECEIVING VOICE AUDIO
         </div>
       )}
-      {pttStatus && !isTransmitting && <div className="max-w-sm text-center text-xs font-bold text-tertiary">{pttStatus}</div>}
+      {pttStatus && !isTransmitting && !isReceiving && (
+        <div className="max-w-sm text-center text-xs font-bold text-slate-500">{pttStatus}</div>
+      )}
 
       {/* PTT Button Area */}
       <div className="flex-1 flex items-center justify-center relative w-full min-h-[280px]">
         
         {/* Ripple rings when active */}
-        {(isTransmitting || isReceiving) && (
+        {isReceiving && (
           <>
-            <div className={`absolute w-72 h-72 rounded-full animate-ripple ${
-              isTransmitting ? 'bg-tertiary/15' : 'bg-secondary/15'
-            }`} style={{ animationDelay: '0s' }} />
-            <div className={`absolute w-72 h-72 rounded-full animate-ripple ${
-              isTransmitting ? 'bg-tertiary/10' : 'bg-secondary/10'
-            }`} style={{ animationDelay: '0.7s' }} />
-            <div className={`absolute w-72 h-72 rounded-full animate-ripple ${
-              isTransmitting ? 'bg-tertiary/5' : 'bg-secondary/5'
-            }`} style={{ animationDelay: '1.4s' }} />
+            <div className="absolute w-72 h-72 rounded-full bg-green-500/20 animate-ping" style={{ animationDuration: '1.5s' }} />
+            <div className="absolute w-80 h-80 rounded-full bg-green-500/10 animate-ping" style={{ animationDuration: '2s' }} />
           </>
         )}
 
-        {/* Pulsing glow */}
+        {isTransmitting && (
+          <>
+            <div className="absolute w-72 h-72 rounded-full bg-red-500/20 animate-ping" style={{ animationDuration: '1.5s' }} />
+            <div className="absolute w-80 h-80 rounded-full bg-red-500/10 animate-ping" style={{ animationDuration: '2s' }} />
+          </>
+        )}
+
+        {/* Pulsing glow for idle */}
         {!isTransmitting && !isReceiving && (
           <div className="absolute w-64 h-64 rounded-full animate-pulse-glow"
             style={{ background: 'radial-gradient(circle, rgba(0,86,179,0.08) 0%, transparent 70%)' }} />
@@ -103,37 +107,37 @@ export function HomeScreen({ isConnected, isTransmitting, isReceiving, onPttStar
           onPointerDown={(e) => { e.preventDefault(); onPttStart(); }}
           onPointerUp={(e) => { e.preventDefault(); onPttStop(); }}
           onPointerLeave={(e) => { e.preventDefault(); onPttStop(); }}
-          className={`relative z-10 w-56 h-56 rounded-full flex flex-col items-center justify-center transition-all duration-200 active:scale-[0.93] ${
-            isTransmitting ? 'scale-[0.94]' : ''
+          className={`relative z-10 w-56 h-56 rounded-full flex flex-col items-center justify-center transition-all duration-300 active:scale-[0.93] ${
+            isTransmitting ? 'scale-[0.94] ring-8 ring-red-500/40' : isReceiving ? 'scale-105 ring-8 ring-green-500/50 animate-pulse' : ''
           }`}
           style={{ 
             touchAction: 'none',
             background: isTransmitting 
-              ? 'radial-gradient(circle at 40% 40%, #E53935, #88000E)' 
+              ? 'radial-gradient(circle at 40% 40%, #ef4444, #991b1b)' 
               : isReceiving 
-                ? 'radial-gradient(circle at 40% 40%, #4CAF50, #1B6D24)'
+                ? 'radial-gradient(circle at 40% 40%, #22c55e, #15803d)'
                 : 'radial-gradient(circle at 40% 40%, #0056B3, #003F87)',
             boxShadow: isTransmitting 
-              ? '0 20px 60px rgba(136,0,14,0.4), 0 0 40px rgba(136,0,14,0.2)' 
+              ? '0 20px 60px rgba(220,38,38,0.5), 0 0 40px rgba(220,38,38,0.3)' 
               : isReceiving
-                ? '0 20px 60px rgba(27,109,36,0.4), 0 0 40px rgba(27,109,36,0.2)'
+                ? '0 20px 60px rgba(34,197,94,0.6), 0 0 50px rgba(34,197,94,0.4)'
                 : '0 20px 60px rgba(0,63,135,0.35), 0 0 40px rgba(0,63,135,0.15)'
           }}
         >
           {/* Inner rim */}
           <div className="absolute inset-2 rounded-full" 
-            style={{ border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.03)' }} />
+            style={{ border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.05)' }} />
           
           {isReceiving ? (
-            <Volume2 size={64} className="text-white mb-2" style={{ filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.2))' }} />
+            <Volume2 size={64} className="text-white mb-2 animate-bounce" style={{ filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.3))' }} />
           ) : (
             <Mic size={64} className="text-white mb-2" style={{ filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.2))' }} />
           )}
           
-          <span className="text-white font-black text-3xl leading-none" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
+          <span className="text-white font-black text-3xl leading-none tracking-tight" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.3)' }}>
             {isTransmitting ? 'TRANS' : isReceiving ? 'RECEIV' : 'PUSH'}
           </span>
-          <span className="text-white/70 font-bold text-[10px] tracking-[0.2em] mt-1">
+          <span className="text-white/80 font-extrabold text-[10px] tracking-[0.2em] mt-1">
             {isTransmitting ? 'MITTING' : isReceiving ? 'ING VOICE' : 'TO TALK'}
           </span>
         </button>
@@ -142,30 +146,21 @@ export function HomeScreen({ isConnected, isTransmitting, isReceiving, onPttStar
       {/* Online Users Pill */}
       <div className="px-4 py-1.5 rounded-full flex items-center space-x-2 cursor-pointer transition-all hover:bg-primary/10"
         style={{ background: 'rgba(0,63,135,0.06)' }}>
-        <div className="w-1.5 h-1.5 rounded-full bg-secondary" />
-        <span className="text-[10px] font-bold text-primary tracking-wider">3 ONLINE</span>
+        <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+        <span className="text-[10px] font-bold text-primary tracking-wider">7 OPERATORS ONLINE</span>
       </div>
 
-      {/* Telemetry */}
-      <div className="w-full flex space-x-3">
-        <div className="flex-1 glass-card p-4 rounded-2xl flex flex-col items-center" 
+      {/* Telemetry (Latency only, Battery removed) */}
+      <div className="w-full">
+        <div className="glass-card p-4 rounded-2xl flex flex-col items-center" 
           style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-          <span className="text-[9px] text-gray-400 font-bold tracking-wider">LATENCY</span>
+          <span className="text-[9px] text-gray-400 font-bold tracking-wider">NETWORK LATENCY</span>
           <div className="flex items-baseline mt-1 space-x-1">
-            <Activity size={14} className={isConnected ? 'text-secondary' : 'text-gray-300'} />
+            <Activity size={16} className={isConnected ? 'text-green-600' : 'text-gray-300'} />
             <span className={`text-2xl font-black ${isConnected ? 'text-primary' : 'text-gray-300'}`}>
               {isConnected ? latency : '—'}
             </span>
             <span className="text-[10px] text-primary/60 font-bold">ms</span>
-          </div>
-        </div>
-        <div className="flex-1 glass-card p-4 rounded-2xl flex flex-col items-center"
-          style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-          <span className="text-[9px] text-gray-400 font-bold tracking-wider">BATTERY</span>
-          <div className="flex items-baseline mt-1 space-x-1">
-            <Battery size={14} className="text-secondary" />
-            <span className="text-2xl font-black text-primary">85</span>
-            <span className="text-[10px] text-primary/60 font-bold">%</span>
           </div>
         </div>
       </div>
@@ -175,13 +170,13 @@ export function HomeScreen({ isConnected, isTransmitting, isReceiving, onPttStar
         style={{ background: 'linear-gradient(135deg, rgba(136,0,14,0.06) 0%, rgba(136,0,14,0.03) 100%)', border: '1px solid rgba(136,0,14,0.08)' }}>
         <div className="w-10 h-10 rounded-xl flex items-center justify-center"
           style={{ background: 'rgba(136,0,14,0.1)' }}>
-          <ShieldAlert className="text-tertiary" size={20} />
+          <ShieldAlert className="text-red-700" size={20} />
         </div>
         <div className="flex-1">
-          <div className="text-[9px] text-tertiary/50 font-bold tracking-wider">ACTIVE PROTOCOL</div>
-          <div className="text-sm text-tertiary font-bold">Protocol Alpha Engaged</div>
+          <div className="text-[9px] text-red-700/60 font-bold tracking-wider">ACTIVE PROTOCOL</div>
+          <div className="text-sm text-red-800 font-bold">Protocol Alpha Engaged</div>
         </div>
-        <ChevronDown size={16} className="text-tertiary/30 -rotate-90" />
+        <ChevronDown size={16} className="text-red-700/40 -rotate-90" />
       </div>
     </div>
   );

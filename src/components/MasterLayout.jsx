@@ -28,7 +28,9 @@ export function MasterLayout({
     onLoginSubmit({ username: username.trim(), password });
   };
 
+  // Full Navigation List
   const navItems = [
+    { label: 'Dashboard', icon: LayoutDashboard },
     { label: 'Talk', icon: Radio },
     { label: 'Members', icon: Users },
     { label: 'Alerts', icon: AlertTriangle },
@@ -37,25 +39,34 @@ export function MasterLayout({
     { label: 'Profile', icon: UserCircle }
   ];
 
-  const NavigationItems = ({ desktop = false } = {}) => navItems.map((item) => {
+  // Mobile Bottom Menu Items with "Talk" right in the CENTER
+  const mobileNavItems = [
+    { label: 'Dashboard', icon: LayoutDashboard },
+    { label: 'Members', icon: Users },
+    { label: 'Talk', icon: Radio, isCenter: true },
+    { label: 'Feed', icon: Rss },
+    { label: 'Profile', icon: UserCircle }
+  ];
+
+  const DesktopNavigationItems = () => navItems.map((item) => {
     const Icon = item.icon;
     const isSelected = currentScreen === item.label;
-    if (desktop) {
-      return <button key={item.label} onClick={() => setCurrentScreen(item.label)} className={`mb-1 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold transition-colors ${isSelected ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-slate-500 hover:bg-primary/5 hover:text-primary'}`}>
+    return (
+      <button 
+        key={item.label} 
+        onClick={() => setCurrentScreen(item.label)} 
+        className={`mb-1 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold transition-colors ${
+          isSelected 
+            ? 'bg-primary text-white shadow-lg shadow-primary/20' 
+            : 'text-slate-500 hover:bg-primary/5 hover:text-primary'
+        }`}
+      >
         <Icon size={18} /> {item.label}
-      </button>;
-    }
-    return <button key={item.label} onClick={() => setCurrentScreen(item.label)} className="flex-1 flex flex-col items-center py-2 sm:py-2.5 px-1 transition-all relative">
-      {isSelected && <div className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-primary" />}
-      <div className={`p-1 sm:p-1.5 rounded-xl transition-all ${isSelected ? 'bg-primary/10' : ''}`}><Icon size={16} className={`sm:w-[18px] sm:h-[18px] transition-colors ${isSelected ? 'text-primary' : 'text-gray-400'}`} /></div>
-      <span className={`text-[8px] sm:text-[9px] font-bold uppercase mt-0.5 tracking-wider transition-colors ${isSelected ? 'text-primary' : 'text-gray-400'}`}>{item.label}</span>
-    </button>;
+      </button>
+    );
   });
 
   return (
-    /* 
-      Responsive container: Full width and height for all devices 
-    */
     <div className="flex flex-col h-screen w-full max-w-[1600px] relative overflow-hidden bg-background lg:h-[calc(100vh-2rem)] lg:rounded-3xl lg:shadow-2xl lg:ring-1 lg:ring-slate-200"
       style={{ background: 'linear-gradient(180deg, #F0F2F5 0%, #E8EDF5 100%)' }}>
       
@@ -65,7 +76,7 @@ export function MasterLayout({
           background: 'linear-gradient(135deg, #003F87 0%, #0056B3 100%)',
           boxShadow: '0 4px 20px rgba(0,63,135,0.3)'
         }}>
-        <div className="flex items-center cursor-pointer" onClick={() => setCurrentScreen('Profile')}>
+        <div className="flex items-center cursor-pointer" onClick={() => setCurrentScreen('Dashboard')}>
           <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center overflow-hidden bg-white"
             style={{ 
               background: 'linear-gradient(135deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)',
@@ -156,7 +167,7 @@ export function MasterLayout({
             <p className="text-[10px] font-black tracking-[0.18em] text-slate-400">OPERATIONS</p>
             <p className="mt-1 text-sm font-bold text-slate-700">COMRADCOM Console</p>
           </div>
-          <nav>{NavigationItems({ desktop: true })}</nav>
+          <nav><DesktopNavigationItems /></nav>
           <div className="mt-auto rounded-2xl bg-primary/5 p-4">
             <LayoutDashboard size={18} className="text-primary" />
             <p className="mt-2 text-xs font-bold text-slate-700">Network workspace</p>
@@ -190,16 +201,67 @@ export function MasterLayout({
         </div>
       )}
 
-      {/* Bottom Navigation */}
+      {/* Bottom Navigation (Phone Menu) */}
       <nav className="z-20 relative lg:hidden"
         style={{ 
           background: 'rgba(255,255,255,0.95)',
           backdropFilter: 'blur(20px)',
           boxShadow: '0 -4px 30px rgba(0,0,0,0.08)',
-          borderTop: '1px solid rgba(0,63,135,0.06)'
+          borderTop: '1px solid rgba(0,63,135,0.08)'
         }}>
-        <div className="flex justify-between px-1">
-          {NavigationItems()}
+        <div className="flex items-center justify-around px-2 py-1 relative">
+          {mobileNavItems.map((item) => {
+            const Icon = item.icon;
+            const isSelected = currentScreen === item.label;
+
+            // SPECIAL FOCUSED STYLING FOR CENTER "TALK" BUTTON
+            if (item.isCenter) {
+              return (
+                <div key={item.label} className="relative -mt-6 flex flex-col items-center z-30">
+                  <button
+                    onClick={() => setCurrentScreen(item.label)}
+                    aria-label="PTT Talk Page"
+                    className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 shadow-xl active:scale-90 ${
+                      isSelected 
+                        ? 'bg-gradient-to-tr from-[#002b5d] via-primary to-[#0056B3] text-white ring-4 ring-primary/30 scale-105' 
+                        : 'bg-gradient-to-tr from-[#003F87] to-[#0056B3] text-white/90 hover:scale-105'
+                    }`}
+                    style={{
+                      boxShadow: isSelected 
+                        ? '0 6px 25px rgba(0,63,135,0.5), 0 0 15px rgba(0,86,179,0.4)' 
+                        : '0 4px 15px rgba(0,63,135,0.35)'
+                    }}
+                  >
+                    <Icon size={26} className={`${isSelected ? 'animate-pulse' : ''}`} />
+                  </button>
+                  <span className={`text-[9px] font-black uppercase mt-1 tracking-wider transition-colors ${
+                    isSelected ? 'text-primary' : 'text-slate-500'
+                  }`}>
+                    {item.label}
+                  </span>
+                </div>
+              );
+            }
+
+            // Standard Bottom Nav Buttons
+            return (
+              <button 
+                key={item.label} 
+                onClick={() => setCurrentScreen(item.label)} 
+                className="flex-1 flex flex-col items-center py-2 px-1 transition-all relative"
+              >
+                {isSelected && <div className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-primary" />}
+                <div className={`p-1.5 rounded-xl transition-all ${isSelected ? 'bg-primary/10' : ''}`}>
+                  <Icon size={18} className={`transition-colors ${isSelected ? 'text-primary' : 'text-slate-400'}`} />
+                </div>
+                <span className={`text-[8px] font-bold uppercase mt-0.5 tracking-wider transition-colors ${
+                  isSelected ? 'text-primary' : 'text-slate-400'
+                }`}>
+                  {item.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
         {/* Safe area bottom spacer for mobile */}
         <div className="h-[env(safe-area-inset-bottom,0px)]" />
