@@ -14,11 +14,11 @@ export function DashboardScreen() {
   const [weather, setWeather] = useState(null);
   const [weatherLoading, setWeatherLoading] = useState(true);
 
-  // User location state (Defaults to Metro Manila until GPS resolves)
+  // Default location set to Iligan City (8.2280, 124.2452)
   const [userLocation, setUserLocation] = useState({
-    lat: 14.5995,
-    lon: 120.9842,
-    name: 'Metro Manila (Default)',
+    lat: 8.2280,
+    lon: 124.2452,
+    name: 'Iligan City, Philippines',
     isLive: false
   });
 
@@ -29,7 +29,6 @@ export function DashboardScreen() {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
-  const notifiedEqIdsRef = useRef(new Set());
   const lastWeatherNotifRef = useRef('');
 
   // 1. Get User's Live Geolocation & Reverse Geocode City Name
@@ -46,7 +45,7 @@ export function DashboardScreen() {
           const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
           if (res.ok) {
             const data = await res.json();
-            const locality = data.locality || data.city || data.principalSubdivision || 'Your Location';
+            const locality = data.locality || data.city || data.principalSubdivision || 'Iligan City';
             const country = data.countryName || 'Philippines';
             setUserLocation({
               lat,
@@ -62,7 +61,7 @@ export function DashboardScreen() {
         }
       },
       (err) => {
-        console.warn('Geolocation error for weather/map:', err);
+        console.warn('Geolocation fallback to Iligan City:', err);
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
@@ -78,10 +77,10 @@ export function DashboardScreen() {
       const perm = await Notification.requestPermission();
       setNotifPermission(perm);
       if (perm === 'granted') {
-        setNotifStatus('Notifications active for Seismic & Weather alerts!');
+        setNotifStatus('Notifications active for Weather alerts!');
         new Notification('COMRADCOM Emergency Alerts Enabled', {
-          body: 'You will receive real-time notifications for seismic events and DOST-PAGASA weather advisories.',
-          icon: '/comradcom-logo.png'
+          body: 'You will receive real-time notifications for DOST-PAGASA weather advisories.',
+          icon: '/comradcom_logo.png'
         });
       } else {
         setNotifStatus('Notification permission denied');
@@ -92,13 +91,13 @@ export function DashboardScreen() {
   };
 
   // 3. Send Push/Local Notification
-  const sendAlertNotification = (title, body, icon = '/comradcom-logo.png') => {
+  const sendAlertNotification = (title, body, icon = '/comradcom_logo.png') => {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     try {
       new Notification(title, {
         body,
         icon,
-        badge: '/comradcom-logo.png',
+        badge: '/comradcom_logo.png',
         vibrate: [200, 100, 200]
       });
     } catch (e) {
@@ -106,7 +105,7 @@ export function DashboardScreen() {
     }
   };
 
-  // 4. Fetch USGS Seismic Data
+  // 4. Fetch USGS Seismic Data (Seismic notifications disabled as requested)
   const fetchEarthquakes = async () => {
     setEqLoading(true);
     setEqError(null);
@@ -118,22 +117,7 @@ export function DashboardScreen() {
       const data = await res.json();
       const features = data.features || [];
       setEqEvents(features);
-
-      // Check for recent high magnitude events to notify
-      features.slice(0, 3).forEach((eq) => {
-        const eqId = eq.id;
-        const mag = eq.properties?.mag || 0;
-        const place = eq.properties?.place || 'Philippines Region';
-        const depth = eq.geometry?.coordinates?.[2] || 0;
-
-        if (!notifiedEqIdsRef.current.has(eqId) && mag >= 4.0) {
-          notifiedEqIdsRef.current.add(eqId);
-          sendAlertNotification(
-            `⚠️ SEISMIC ALERT: M${mag.toFixed(1)} Earthquake`,
-            `${place} • Depth: ${depth}km`
-          );
-        }
-      });
+      // Note: Seismic push notification trigger is disabled per user request
     } catch (err) {
       console.error('EQ Fetch Error:', err);
       setEqError('Could not sync live seismic feed');
@@ -142,7 +126,7 @@ export function DashboardScreen() {
     }
   };
 
-  // 5. Fetch DOST-PAGASA & Open-Meteo Weather for User's Location
+  // 5. Fetch DOST-PAGASA & Open-Meteo Weather for User's Location (Default: Iligan City)
   const fetchWeather = async (lat = userLocation.lat, lon = userLocation.lon) => {
     setWeatherLoading(true);
     try {
@@ -231,10 +215,9 @@ export function DashboardScreen() {
     if (!mapRef.current) return;
 
     if (!mapInstanceRef.current) {
-      // Create Leaflet Map
       const map = L.map(mapRef.current, {
         center: [userLocation.lat, userLocation.lon],
-        zoom: userLocation.isLive ? 7 : 6,
+        zoom: userLocation.isLive ? 8 : 7,
         zoomControl: true
       });
 
@@ -253,7 +236,7 @@ export function DashboardScreen() {
     markersRef.current.forEach(m => map.removeLayer(m));
     markersRef.current = [];
 
-    // Add User Location Marker
+    // Add User/Default Location Marker (Iligan City default)
     const userMarker = L.circleMarker([userLocation.lat, userLocation.lon], {
       radius: 8,
       fillColor: '#003F87',
@@ -263,7 +246,7 @@ export function DashboardScreen() {
       fillOpacity: 0.9
     }).addTo(map);
 
-    userMarker.bindPopup(`<b>Your Location</b><br/>${userLocation.name}`);
+    userMarker.bindPopup(`<b>Location: ${userLocation.name}</b>`);
     markersRef.current.push(userMarker);
 
     // Plot Earthquakes on GIS Map
@@ -329,7 +312,7 @@ export function DashboardScreen() {
             <button
               onClick={requestNotificationPermission}
               className="px-3 py-1.5 rounded-xl bg-amber-500 text-white text-xs font-bold shadow-md hover:bg-amber-600 active:scale-95 transition-all flex items-center space-x-1.5"
-              title="Enable Emergency Push Notifications"
+              title="Enable Emergency Weather Notifications"
             >
               <Bell size={14} />
               <span>Enable Alerts</span>
@@ -378,12 +361,12 @@ export function DashboardScreen() {
           </div>
         </div>
 
-        {/* Stat 3: User Location Weather */}
+        {/* Stat 3: Weather (Default: Iligan City) */}
         <div className="glass-card p-3.5 rounded-2xl border border-white/60 bg-white/70 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between text-blue-600 mb-2">
             <Thermometer size={18} />
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 truncate max-w-[70px]">
-              {userLocation.isLive ? 'YOUR GPS' : 'NCR'}
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 truncate max-w-[75px]">
+              {userLocation.isLive ? 'YOUR GPS' : 'ILIGAN'}
             </span>
           </div>
           <div>
@@ -468,10 +451,10 @@ export function DashboardScreen() {
           </div>
         </div>
 
-        {/* User Location Weather Widget & DOST-PAGASA Info */}
+        {/* Location Weather Widget & DOST-PAGASA Info */}
         <div className="space-y-5 flex flex-col justify-between">
           
-          {/* Weather Widget tailored to User's location */}
+          {/* Weather Widget tailored to location (Default: Iligan City) */}
           <div className="glass-card p-5 rounded-3xl border border-white/70 bg-white/80 shadow-md">
             <div className="flex items-center justify-between mb-3">
               <span className="text-[10px] font-black tracking-wider text-primary uppercase flex items-center gap-1">
@@ -512,16 +495,16 @@ export function DashboardScreen() {
             <div>
               <div className="flex items-center space-x-2 mb-3">
                 <ShieldCheck size={18} className="text-primary" />
-                <h4 className="text-sm font-black text-slate-800">DOST-PAGASA & Emergency Feed</h4>
+                <h4 className="text-sm font-black text-slate-800">DOST-PAGASA Weather Feed</h4>
               </div>
               <p className="text-xs text-slate-500 leading-relaxed">
-                Integrated real-time weather alerts & seismic activity push notifications enabled for your location.
+                Integrated real-time weather alerts & storm advisories enabled for your location.
               </p>
               
               <div className="mt-4 p-3 rounded-2xl bg-blue-50/80 border border-blue-100 flex items-center justify-between text-xs font-bold text-primary">
                 <span className="flex items-center gap-1.5">
                   <Bell size={14} />
-                  <span>Push Alerts: {notifPermission === 'granted' ? 'Active' : 'Disabled'}</span>
+                  <span>Weather Alerts: {notifPermission === 'granted' ? 'Active' : 'Disabled'}</span>
                 </span>
                 {notifPermission !== 'granted' && (
                   <button onClick={requestNotificationPermission} className="underline text-[10px]">Enable</button>
