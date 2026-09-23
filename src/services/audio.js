@@ -5,10 +5,27 @@ export class AudioService {
     this.recorder = null;
     this.onAudioData = null;
     this.isRecording = false;
+    this.stream = null;
+    this.audioContext = null;
+    this.sourceNode = null;
+  }
+
+  // Acquire the microphone once after a user gesture. Keeping its stream alive
+  // avoids the permission/device spin-up delay on every PTT press.
+  async prepare() {
+    if (this.sourceNode) return;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error('Microphone recording is not supported in this browser.');
+    }
+    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    this.audioContext = new AudioContext();
+    this.sourceNode = this.audioContext.createMediaStreamSource(this.stream);
   }
 
   async startRecording() {
     try {
+      await this.prepare();
       this.isRecording = true;
       // Using opus-recorder to encode mic audio directly to raw Opus packets (not ogg)
       this.recorder = new Recorder({
@@ -19,7 +36,8 @@ export class AudioService {
         encoderApplication: 2048, // Voice
         encoderFrameSize: 20, // 20ms frames
         maxFramesPerPage: 1, // one 20 ms frame per page for low-latency PTT
-        leaveStreamOpen: true
+        leaveStreamOpen: true,
+        sourceNode: this.sourceNode
       });
 
       this.recorder.ondataavailable = (oggPage) => {
@@ -40,7 +58,18 @@ export class AudioService {
     this.isRecording = false;
     if (this.recorder) {
       this.recorder.stop();
+      this.recorder = null;
     }
+  }
+
+  async close() {
+    this.stopRecording();
+    this.sourceNode?.disconnect();
+    this.stream?.getTracks().forEach((track) => track.stop());
+    if (this.audioContext && this.audioContext.state !== 'closed') await this.audioContext.close();
+    this.sourceNode = null;
+    this.stream = null;
+    this.audioContext = null;
   }
 }
 

@@ -8,6 +8,8 @@ export class ZelloService {
     this.onStatus = null;
     this.nextSequence = 2;
     this.pendingRequests = new Map();
+    this.pendingAudio = [];
+    this.openingStreamSeq = null;
   }
 
   connect() {
@@ -118,6 +120,8 @@ export class ZelloService {
   startStream(channel) {
     this.packetId = 0;
     const seq = this.nextSequence++;
+    this.openingStreamSeq = seq;
+    this.pendingAudio = [];
     // Command to start an outgoing audio stream
     // codec_header for 16000Hz, 1 frame/packet, 20ms frame size: [128, 62, 1, 20] -> gD4BFA==
     const startCmd = {
@@ -138,7 +142,14 @@ export class ZelloService {
         }
       }, 8000);
       this.pendingRequests.set(seq, {
-        resolve: (data) => { window.clearTimeout(timeoutId); this.currentStreamId = data.stream_id; resolve(data); },
+        resolve: (data) => {
+          window.clearTimeout(timeoutId);
+          this.openingStreamSeq = null;
+          this.currentStreamId = data.stream_id;
+          this.pendingAudio.forEach((packet) => this.sendAudioChunk(packet));
+          this.pendingAudio = [];
+          resolve(data);
+        },
         reject: (error) => { window.clearTimeout(timeoutId); reject(error); }
       });
       this.ws.send(JSON.stringify(startCmd));
@@ -146,6 +157,13 @@ export class ZelloService {
   }
 
   sendAudioChunk(opusPayload) {
+    if (!this.currentStreamId && this.openingStreamSeq) {
+      // Preserve the beginning of a transmission while the server approves it.
+      // Keep only one second so a slow connection cannot grow memory indefinitely.
+      this.pendingAudio.push(opusPayload);
+      if (this.pendingAudio.length > 50) this.pendingAudio.shift();
+      return;
+    }
     if (this.ws && this.ws.readyState === WebSocket.OPEN && this.currentStreamId) {
       this.packetId++;
       
@@ -168,6 +186,15 @@ export class ZelloService {
   }
 
   stopStream() {
+    if (this.openingStreamSeq) {
+      const pending = this.pendingRequests.get(this.openingStreamSeq);
+      if (pending) {
+        this.pendingRequests.delete(this.openingStreamSeq);
+        pending.reject(new Error('Transmission cancelled.'));
+      }
+      this.openingStreamSeq = null;
+      this.pendingAudio = [];
+    }
     if (!this.currentStreamId) return;
     const stopCmd = {
       command: 'stop_stream',
@@ -181,6 +208,7 @@ export class ZelloService {
   }
 
   disconnect() {
+    this.stopStream();
     if (this.ws) {
       this.ws.close();
     }

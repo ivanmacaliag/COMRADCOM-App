@@ -77,11 +77,11 @@ export function DashboardScreen() {
       const perm = await Notification.requestPermission();
       setNotifPermission(perm);
       if (perm === 'granted') {
-        setNotifStatus('Notifications active for Weather alerts!');
-        new Notification('COMRADCOM Emergency Alerts Enabled', {
-          body: 'You will receive real-time notifications for DOST-PAGASA weather advisories.',
-          icon: '/comradcom_logo.png'
-        });
+        await sendAlertNotification(
+          'COMRADCOM Emergency Alerts Enabled',
+          'You will receive weather advisories while COMRADCOM is active.'
+        );
+        setNotifStatus('Notifications are enabled on this device.');
       } else {
         setNotifStatus('Notification permission denied');
       }
@@ -91,15 +91,25 @@ export function DashboardScreen() {
   };
 
   // 3. Send Push/Local Notification
-  const sendAlertNotification = (title, body, icon = '/comradcom_logo.png') => {
+  const sendAlertNotification = async (title, body, icon = '/comradcom_logo.png') => {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const options = {
+      body,
+      icon,
+      badge: '/pwa-192x192.png',
+      tag: 'comradcom-weather-alert',
+      renotify: true,
+      vibrate: [200, 100, 200]
+    };
     try {
-      new Notification(title, {
-        body,
-        icon,
-        badge: '/comradcom_logo.png',
-        vibrate: [200, 100, 200]
-      });
+      // Installed PWAs (especially on Android and iPhone) reliably display
+      // notifications through the service worker, not the page constructor.
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.ready;
+        await registration.showNotification(title, options);
+      } else {
+        new Notification(title, options);
+      }
     } catch (e) {
       console.error('Notification trigger error:', e);
     }
