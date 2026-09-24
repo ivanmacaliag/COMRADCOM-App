@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Radio, Users, AlertTriangle, Globe, Rss, UserCircle, LayoutDashboard,
   LogIn, PowerOff, MoreVertical, X, ShieldCheck, RadioTower, LockKeyhole,
-  Bell, CheckCheck, Trash2, Clock
+  Bell, CheckCheck, Trash2, Clock, ShieldAlert
 } from 'lucide-react';
 import { 
   getStoredNotifications, 

@@ -19,12 +19,26 @@ registerRoute(
   new NavigationRoute(createHandlerBoundToURL('index.html'))
 );
 
+// Helper: build consistent notification options with COMRADCOM branding
+function buildNotifOptions(body, tag, extra = {}) {
+  return {
+    body: body || '',
+    // pwa-192x192.png is the COMRADCOM logo — shown as the notification icon
+    icon: '/pwa-192x192.png',
+    // badge must be a real monochrome PNG; use same icon as safe fallback
+    badge: '/pwa-192x192.png',
+    tag: tag || `comradcom-${Date.now()}`,
+    renotify: true,
+    data: { url: '/' },
+    ...extra
+  };
+}
+
 // ───────────────────────────────────────────────────
 // PUSH NOTIFICATION HANDLER (Web Push API)
 // ───────────────────────────────────────────────────
 self.addEventListener('push', (event) => {
   let data = { title: 'COMRADCOM Alert', body: 'New alert received.' };
-
   try {
     if (event.data) data = event.data.json();
   } catch {
@@ -32,26 +46,21 @@ self.addEventListener('push', (event) => {
   }
 
   const title = data.title || 'COMRADCOM Network Philippines';
-  const options = {
-    body: data.body || '',
-    icon: '/pwa-192x192.png',
-    badge: '/badge.png',
-    tag: data.tag || `comradcom-push-${Date.now()}`,
-    renotify: true,
+  const options = buildNotifOptions(data.body, data.tag || `comradcom-push-${Date.now()}`, {
     requireInteraction: !!data.requireInteraction,
     data: { url: data.url || '/', timestamp: new Date().toISOString() },
     actions: [
       { action: 'open', title: '📡 Open COMRADCOM' },
       { action: 'dismiss', title: 'Dismiss' }
     ]
-  };
+  });
 
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
 // ───────────────────────────────────────────────────
 // PERIODIC BACKGROUND SYNC — weather & earthquake checks
-// Fires even when the app is closed (Android Chrome + Edge with PWA)
+// Fires even when the app is closed (Android Chrome + Edge PWA)
 // ───────────────────────────────────────────────────
 self.addEventListener('periodicsync', (event) => {
   if (event.tag === 'comradcom-background-check') {
@@ -61,7 +70,7 @@ self.addEventListener('periodicsync', (event) => {
 
 async function runBackgroundCheck() {
   try {
-    // ---- Weather Check (Open-Meteo API, default: Iligan City) ----
+    // ---- Weather Check (Open-Meteo, default: Iligan City) ----
     const lat = 8.2280, lon = 124.2452;
     const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,wind_speed_10m&timezone=Asia%2FManila`;
     const wResp = await fetch(weatherUrl, { cache: 'no-store' });
@@ -77,18 +86,14 @@ async function runBackgroundCheck() {
 
       if (isStorm || isHeavyRain || isHighWind) {
         let body = '';
-        if (isStorm) body = `⛈️ Thunderstorm conditions active. Wind: ${windSpeed} km/h, Temp: ${temp}°C`;
+        if (isStorm)       body = `⛈️ Thunderstorm conditions active. Wind: ${windSpeed} km/h, Temp: ${temp}°C`;
         else if (isHeavyRain) body = `🌧️ Heavy rain advisory. Wind: ${windSpeed} km/h, Temp: ${temp}°C`;
-        else body = `💨 High wind advisory: ${windSpeed} km/h. Stay vigilant.`;
+        else               body = `💨 High wind advisory: ${windSpeed} km/h. Stay vigilant.`;
 
-        await self.registration.showNotification('⚠️ COMRADCOM Weather Alert', {
-          body,
-          icon: '/pwa-192x192.png',
-          badge: '/badge.png',
-          tag: 'comradcom-weather-bg',
-          renotify: true,
-          data: { url: '/' }
-        });
+        await self.registration.showNotification(
+          '⚠️ COMRADCOM Weather Alert',
+          buildNotifOptions(body, 'comradcom-weather-bg')
+        );
       }
     }
 
@@ -104,15 +109,14 @@ async function runBackgroundCheck() {
         const eq = events[0].properties;
         const mag = eq.mag;
         const place = eq.place || 'near Philippines';
-        await self.registration.showNotification('🚨 COMRADCOM Seismic Alert', {
-          body: `M${mag.toFixed(1)} earthquake detected ${place}. Activate emergency protocol if needed.`,
-          icon: '/pwa-192x192.png',
-          badge: '/badge.png',
-          tag: 'comradcom-eq-bg',
-          renotify: true,
-          requireInteraction: mag >= 6.5,
-          data: { url: '/' }
-        });
+        await self.registration.showNotification(
+          '🚨 COMRADCOM Seismic Alert',
+          buildNotifOptions(
+            `M${mag.toFixed(1)} earthquake detected ${place}. Activate emergency protocol if needed.`,
+            'comradcom-eq-bg',
+            { requireInteraction: mag >= 6.5 }
+          )
+        );
       }
     }
   } catch (err) {
@@ -148,22 +152,17 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
   }
 
-  // Manually trigger a background check (called from app)
   if (event.data?.type === 'TRIGGER_BACKGROUND_CHECK') {
     runBackgroundCheck();
   }
 
-  // Show a notification from the app (used when SW showNotification is needed on mobile)
   if (event.data?.type === 'SHOW_NOTIFICATION') {
     const { title, body, tag, requireInteraction } = event.data;
-    self.registration.showNotification(title || 'COMRADCOM Alert', {
-      body: body || '',
-      icon: '/pwa-192x192.png',
-      badge: '/badge.png',
-      tag: tag || `comradcom-msg-${Date.now()}`,
-      renotify: true,
-      requireInteraction: !!requireInteraction,
-      data: { url: '/' }
-    });
+    self.registration.showNotification(
+      title || 'COMRADCOM Alert',
+      buildNotifOptions(body, tag || `comradcom-msg-${Date.now()}`, {
+        requireInteraction: !!requireInteraction
+      })
+    );
   }
 });

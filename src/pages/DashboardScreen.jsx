@@ -146,7 +146,7 @@ export function DashboardScreen() {
           await reg.showNotification(title, {
             body,
             icon: '/pwa-192x192.png',
-            badge: '/badge.png',
+            badge: '/pwa-192x192.png',
             tag: `comradcom-${Date.now()}`,
             renotify: true,
             data: { url: '/' }
@@ -156,7 +156,7 @@ export function DashboardScreen() {
       }
 
       // Desktop-only fallback (never used on Android/iOS successfully with SW)
-      try { new Notification(title, { body, icon: '/pwa-192x192.png', badge: '/badge.png' }); }
+      try { new Notification(title, { body, icon: '/pwa-192x192.png', badge: '/pwa-192x192.png' }); }
       catch (e) { console.warn('[COMRADCOM] Direct Notification() failed:', e); }
     } catch (e) {
       console.error('[COMRADCOM] Notification error:', e);
