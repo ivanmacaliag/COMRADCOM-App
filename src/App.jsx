@@ -115,7 +115,7 @@ function App() {
 
     return () => {
       if (zelloRef.current) zelloRef.current.disconnect();
-      if (audioRef.current) audioRef.current.close();
+      if (audioRef.current) audioRef.current.stopRecording();
       if (locationWatchRef.current !== null) navigator.geolocation?.clearWatch(locationWatchRef.current);
       if (receivingTimeoutRef.current) clearTimeout(receivingTimeoutRef.current);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -152,9 +152,6 @@ function App() {
     if (userInitiated) {
       await playerRef.current.init();
       playerRef.current.resume();
-      // This runs from the login button gesture, so later PTT presses do not
-      // have to wait for the phone to wake up its microphone.
-      audioRef.current?.prepare().catch((error) => console.warn('Microphone warm-up deferred:', error));
       // Prompt permissions again if user initiates login
       requestAppPermissions();
     }
@@ -272,13 +269,7 @@ function App() {
 
     try {
       setPttStatus('Opening radio channel…');
-      // Start microphone encoding and channel negotiation together. Audio made
-      // while the server responds is buffered by ZelloService, so the first
-      // words are not lost and the visible wait is only one network round trip.
-      await Promise.all([
-        zelloRef.current.startStream('146.020 Mhz'),
-        audioRef.current.startRecording()
-      ]);
+      await zelloRef.current.startStream('146.020 Mhz');
       if (!pttRequestedRef.current) {
         zelloRef.current.stopStream();
         return;

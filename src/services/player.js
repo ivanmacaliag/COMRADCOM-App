@@ -12,9 +12,12 @@ export class PlayerService {
     if (this.isReady) return;
     
     // Initialize AudioContext
-    this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
-      sampleRate: 16000
-    });
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    try {
+      this.audioContext = new AudioContextClass({ sampleRate: 16000 });
+    } catch {
+      this.audioContext = new AudioContextClass();
+    }
     
     // Initialize Decoder
     this.decoder = new OpusDecoder({ channels: 1, sampleRate: 16000 });
@@ -31,7 +34,8 @@ export class PlayerService {
   }
 
   async playOpusPacket(opusPacket) {
-    if (!this.isReady) return;
+    if (!this.isReady) await this.init();
+    this.resume();
     
     try {
       // Decode Opus packet to PCM Float32Array
@@ -59,7 +63,7 @@ export class PlayerService {
       // Ensure smooth continuous playback
       const currentTime = this.audioContext.currentTime;
       // Add a slight buffer (50ms) to prevent jitter gaps on network delay
-      if (this.nextPlayTime < currentTime) {
+      if (this.nextPlayTime < currentTime || this.nextPlayTime > currentTime + 0.35) {
         this.nextPlayTime = currentTime + 0.05; 
       }
       

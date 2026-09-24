@@ -8,8 +8,6 @@ export class ZelloService {
     this.onStatus = null;
     this.nextSequence = 2;
     this.pendingRequests = new Map();
-    this.pendingAudio = [];
-    this.openingStreamSeq = null;
   }
 
   connect() {
@@ -119,8 +117,6 @@ export class ZelloService {
   startStream(channel) {
     this.packetId = 0;
     const seq = this.nextSequence++;
-    this.openingStreamSeq = seq;
-    this.pendingAudio = [];
     // Command to start an outgoing audio stream
     // codec_header for 16000Hz, 1 frame/packet, 20ms frame size: [128, 62, 1, 20] -> gD4BFA==
     const startCmd = {
@@ -141,14 +137,7 @@ export class ZelloService {
         }
       }, 8000);
       this.pendingRequests.set(seq, {
-        resolve: (data) => {
-          window.clearTimeout(timeoutId);
-          this.openingStreamSeq = null;
-          this.currentStreamId = data.stream_id;
-          this.pendingAudio.forEach((packet) => this.sendAudioChunk(packet));
-          this.pendingAudio = [];
-          resolve(data);
-        },
+        resolve: (data) => { window.clearTimeout(timeoutId); this.currentStreamId = data.stream_id; resolve(data); },
         reject: (error) => { window.clearTimeout(timeoutId); reject(error); }
       });
       this.ws.send(JSON.stringify(startCmd));
@@ -156,26 +145,18 @@ export class ZelloService {
   }
 
   sendAudioChunk(opusPayload) {
-    if (!this.currentStreamId && this.openingStreamSeq) {
-      // Preserve only the start of a transmission while the server approves it.
-      // A short queue prevents an audible one-second catch-up burst on receivers.
-      this.pendingAudio.push(opusPayload);
-      if (this.pendingAudio.length > 12) this.pendingAudio.shift();
-      return;
-    }
     if (this.ws && this.ws.readyState === WebSocket.OPEN && this.currentStreamId) {
       this.packetId++;
       
       // Zello Channel API: type (0x01) + stream ID + packet ID in network byte order.
-      // Packets need monotonically increasing IDs; reusing zero makes receivers
-      // treat live audio as duplicate/out-of-order data, causing robotic playback.
+      // packet ID is ignored for client-to-server audio and must be all zeroes.
       const headerLength = 9;
       const buffer = new ArrayBuffer(headerLength + opusPayload.byteLength);
       const view = new DataView(buffer);
       
       view.setUint8(0, 0x01);
       view.setUint32(1, this.currentStreamId, false);
-      view.setUint32(5, this.packetId, false);
+      view.setUint32(5, 0, false);
       
       // Write Opus Payload
       const payloadView = new Uint8Array(buffer, headerLength);
@@ -186,15 +167,6 @@ export class ZelloService {
   }
 
   stopStream() {
-    if (this.openingStreamSeq) {
-      const pending = this.pendingRequests.get(this.openingStreamSeq);
-      if (pending) {
-        this.pendingRequests.delete(this.openingStreamSeq);
-        pending.reject(new Error('Transmission cancelled.'));
-      }
-      this.openingStreamSeq = null;
-      this.pendingAudio = [];
-    }
     if (!this.currentStreamId) return;
     const stopCmd = {
       command: 'stop_stream',
