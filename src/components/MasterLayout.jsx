@@ -1,8 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Radio, Users, AlertTriangle, Globe, Rss, UserCircle, LayoutDashboard,
-  LogIn, PowerOff, MoreVertical, X, ShieldCheck, RadioTower, LockKeyhole
+  LogIn, PowerOff, MoreVertical, X, ShieldCheck, RadioTower, LockKeyhole,
+  Bell, CheckCheck, Trash2, Clock
 } from 'lucide-react';
+import { 
+  getStoredNotifications, 
+  markNotificationAsRead, 
+  markAllNotificationsAsRead, 
+  clearAllNotifications 
+} from '../services/notifications';
 
 export function MasterLayout({ 
   children, 
@@ -19,14 +26,52 @@ export function MasterLayout({
 }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showAppMenu, setShowAppMenu] = useState(false);
+  const [showNotifMenu, setShowNotifMenu] = useState(false);
+  const [notifications, setNotifications] = useState(getStoredNotifications);
+  const [selectedNotif, setSelectedNotif] = useState(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+
+  useEffect(() => {
+    const handleUpdate = (e) => {
+      if (e.detail) {
+        setNotifications(e.detail);
+      } else {
+        setNotifications(getStoredNotifications());
+      }
+    };
+    window.addEventListener('comradcom-notification-updated', handleUpdate);
+    return () => window.removeEventListener('comradcom-notification-updated', handleUpdate);
+  }, []);
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const handleOpenNotification = (notif) => {
+    markNotificationAsRead(notif.id);
+    setSelectedNotif(notif);
+    setShowNotifMenu(false);
+  };
+
+  const formatTimeAgo = (isoString) => {
+    if (!isoString) return '';
+    try {
+      const date = new Date(isoString);
+      const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
+      if (diffSec < 60) return 'Just now';
+      if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+      if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+      return date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
+    } catch {
+      return '';
+    }
+  };
 
   const submitLogin = (event) => {
     event.preventDefault();
     if (!username.trim() || !password) return;
     onLoginSubmit({ username: username.trim(), password });
   };
+
 
   // Full Navigation List
   const navItems = [
@@ -101,6 +146,138 @@ export function MasterLayout({
             <span>{isConnected ? 'LIVE' : 'OFF'}</span>
           </div>
           
+          {/* Notification Button (placed beside before 3-dot menu) */}
+          <div className="relative">
+            <button 
+              onClick={() => setShowNotifMenu(!showNotifMenu)}
+              aria-label="Notifications"
+              className="w-8 h-8 rounded-full flex items-center justify-center transition-all hover:bg-white/15 active:scale-95 relative"
+              style={{ background: 'rgba(255,255,255,0.12)' }}
+              title="Notifications"
+            >
+              <Bell size={17} className="text-white" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 rounded-full bg-red-600 text-white text-[9px] font-black flex items-center justify-center shadow-lg border-2 border-[#003F87] animate-pulse">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+
+            {/* Notification Center Dropdown Panel */}
+            {showNotifMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowNotifMenu(false)} />
+                <div 
+                  className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-white shadow-2xl rounded-3xl border border-slate-100 p-0 z-50 overflow-hidden animate-slide-up flex flex-col max-h-[80vh]"
+                  style={{ boxShadow: '0 12px 40px rgba(0,0,0,0.15)' }}
+                >
+                  {/* Dropdown Header */}
+                  <div className="p-4 bg-gradient-to-r from-[#003F87] to-[#0056B3] text-white flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Bell size={18} />
+                      <span className="font-black text-sm tracking-wide">Notifications</span>
+                      {unreadCount > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-black">
+                          {unreadCount} new
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      {notifications.length > 0 && (
+                        <button 
+                          onClick={() => markAllNotificationsAsRead()}
+                          className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[10px] font-bold flex items-center space-x-1 transition"
+                          title="Mark all as read"
+                        >
+                          <CheckCheck size={12} />
+                          <span>Read all</span>
+                        </button>
+                      )}
+                      {notifications.length > 0 && (
+                        <button 
+                          onClick={() => clearAllNotifications()}
+                          className="p-1 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition"
+                          title="Clear all notifications"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => setShowNotifMenu(false)}
+                        className="p-1 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Notification List */}
+                  <div className="overflow-y-auto divide-y divide-slate-100 max-h-[380px]">
+                    {notifications.length === 0 ? (
+                      <div className="py-12 px-6 text-center text-slate-400 flex flex-col items-center">
+                        <Bell size={32} className="text-slate-300 mb-2" />
+                        <span className="text-xs font-bold text-slate-600">No notifications yet</span>
+                        <p className="text-[11px] text-slate-400 mt-1">Pushed weather advisories, emergency alerts, and updates will appear here.</p>
+                      </div>
+                    ) : (
+                      notifications.map((notif) => {
+                        const isUnread = !notif.read;
+                        const isWarning = notif.category === 'warning' || notif.title?.includes('Warning') || notif.title?.includes('PAGASA');
+                        const isCritical = notif.category === 'alert' || notif.title?.includes('Emergency') || notif.title?.includes('Critical');
+
+                        return (
+                          <div 
+                            key={notif.id}
+                            onClick={() => handleOpenNotification(notif)}
+                            className={`p-3.5 flex items-start space-x-3 transition-colors cursor-pointer hover:bg-slate-50 relative ${
+                              isUnread ? 'bg-blue-50/40' : 'bg-white'
+                            }`}
+                          >
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                              isCritical ? 'bg-red-100 text-red-600' : isWarning ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-primary'
+                            }`}>
+                              {isCritical ? <ShieldAlert size={16} /> : isWarning ? <AlertTriangle size={16} /> : <Bell size={16} />}
+                            </div>
+
+                            <div className="flex-1 min-w-0 pr-2">
+                              <div className="flex items-center justify-between">
+                                <h4 className={`text-xs truncate ${isUnread ? 'font-black text-slate-900' : 'font-bold text-slate-700'}`}>
+                                  {notif.title}
+                                </h4>
+                                {isUnread && (
+                                  <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0 ml-1.5" />
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5 leading-snug">
+                                {notif.body}
+                              </p>
+                              <div className="flex items-center space-x-1 text-[9px] text-slate-400 mt-1.5 font-semibold">
+                                <Clock size={10} />
+                                <span>{formatTimeAgo(notif.timestamp)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Dropdown Footer */}
+                  {notifications.length > 0 && (
+                    <div className="p-2.5 bg-slate-50 border-t border-slate-100 text-center">
+                      <button 
+                        onClick={() => { setShowNotifMenu(false); setCurrentScreen('Alerts'); }}
+                        className="text-[11px] font-bold text-primary hover:underline"
+                      >
+                        View all system alerts & reports →
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
           {!isConnected ? (
             <button onClick={onLoginClick} 
               className="flex items-center text-white font-bold text-[10px] sm:text-xs px-2.5 sm:px-3 py-1.5 rounded-lg transition-all hover:bg-white/10 active:scale-95"
@@ -109,6 +286,7 @@ export function MasterLayout({
             </button>
           ) : (
             <div className="relative flex items-center gap-1">
+              {/* 3-Dot App Menu */}
               <button onClick={() => setShowAppMenu(!showAppMenu)} aria-label="App menu"
                 className="w-8 h-8 rounded-full flex items-center justify-center transition-all hover:bg-white/10"
                 style={{ background: 'rgba(255,255,255,0.1)' }}>
@@ -159,6 +337,56 @@ export function MasterLayout({
           )}
         </div>
       </header>
+
+      {/* Selected Notification Detail Modal */}
+      {selectedNotif && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-slate-100 animate-slide-up">
+            <div className="p-5 bg-gradient-to-r from-[#003F87] to-[#0056B3] text-white flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Bell size={20} />
+                <h3 className="text-base font-black">Notification Details</h3>
+              </div>
+              <button 
+                onClick={() => setSelectedNotif(null)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition active:scale-95"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  {selectedNotif.timestamp ? new Date(selectedNotif.timestamp).toLocaleString() : 'Recent'}
+                </span>
+                <h4 className="text-lg font-black text-slate-900 mt-1 leading-snug">
+                  {selectedNotif.title}
+                </h4>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line">
+                {selectedNotif.body}
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => setSelectedNotif(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => { setSelectedNotif(null); setCurrentScreen('Dashboard'); }}
+                  className="flex-1 py-2.5 rounded-xl bg-primary text-white text-xs font-bold shadow-md hover:bg-primary/90 transition"
+                >
+                  Open Dashboard
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <div className="flex min-h-0 flex-1">

@@ -10,7 +10,7 @@ export class PlayerService {
 
   async init() {
     if (this.isReady) return;
-    
+
     // Initialize AudioContext
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     try {
@@ -18,13 +18,13 @@ export class PlayerService {
     } catch {
       this.audioContext = new AudioContextClass();
     }
-    
-    // Initialize Decoder
+
+    // Initialize Opus Decoder (16kHz mono)
     this.decoder = new OpusDecoder({ channels: 1, sampleRate: 16000 });
     await this.decoder.ready;
-    
+
     this.isReady = true;
-    this.nextPlayTime = this.audioContext.currentTime;
+    this.nextPlayTime = 0;
   }
 
   resume() {
@@ -33,40 +33,57 @@ export class PlayerService {
     }
   }
 
+  reset() {
+    this.nextPlayTime = 0;
+  }
+
   async playOpusPacket(opusPacket) {
     if (!this.isReady) await this.init();
     this.resume();
-    
+
     try {
+      // Ensure we pass a clean Uint8Array slice with byteOffset = 0 to avoid Wasm memory offset issues
+      let packetData;
+      if (opusPacket instanceof Uint8Array) {
+        packetData = opusPacket.byteOffset === 0 && opusPacket.byteLength === opusPacket.buffer.byteLength
+          ? opusPacket
+          : opusPacket.slice();
+      } else if (opusPacket instanceof ArrayBuffer) {
+        packetData = new Uint8Array(opusPacket);
+      } else {
+        return;
+      }
+
       // Decode Opus packet to PCM Float32Array
-      const { channelData, samplesDecoded } = this.decoder.decodeFrame(opusPacket);
-      
+      const { channelData, samplesDecoded } = this.decoder.decodeFrame(packetData);
+
       if (!samplesDecoded || samplesDecoded <= 0) {
         return;
       }
-      
+
       const pcmData = channelData[0];
-      
-      // Create AudioBuffer
+
+      // Create AudioBuffer at 16000 Hz sample rate (matches decoded PCM rate)
       const audioBuffer = this.audioContext.createBuffer(
-        1, 
-        samplesDecoded, 
+        1,
+        samplesDecoded,
         16000
       );
       audioBuffer.getChannelData(0).set(pcmData);
-      
-      // Create Source and schedule playback
+
+      // Create AudioBufferSourceNode
       const source = this.audioContext.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(this.audioContext.destination);
-      
-      // Ensure smooth continuous playback
+
+      // Smooth jitter-buffered scheduling
       const currentTime = this.audioContext.currentTime;
-      // Add a slight buffer (50ms) to prevent jitter gaps on network delay
+      const JITTER_BUFFER = 0.03; // 30ms jitter buffer
+
       if (this.nextPlayTime < currentTime || this.nextPlayTime > currentTime + 0.35) {
-        this.nextPlayTime = currentTime + 0.05; 
+        this.nextPlayTime = currentTime + JITTER_BUFFER;
       }
-      
+
       source.start(this.nextPlayTime);
       this.nextPlayTime += audioBuffer.duration;
     } catch (err) {
@@ -74,3 +91,4 @@ export class PlayerService {
     }
   }
 }
+

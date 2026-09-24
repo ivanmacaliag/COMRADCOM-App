@@ -1,11 +1,123 @@
-import React, { useState, useEffect } from 'react';
-import { Mic, Volume2, Wifi, Activity, ShieldAlert, ChevronDown } from 'lucide-react';
-import { mockChannels } from '../data/mockData';
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Mic, Volume2, Wifi, Activity, ShieldAlert, ChevronDown, 
+  X, Search, Phone, Radio, Users, MapPin, CheckCircle2, UserCheck
+} from 'lucide-react';
+import { mockChannels, mockMembers } from '../data/mockData';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase';
 
-export function HomeScreen({ isConnected, isTransmitting, isReceiving, onPttStart, onPttStop, pttStatus }) {
+export function HomeScreen({ 
+  isConnected, 
+  isTransmitting, 
+  isReceiving, 
+  onPttStart, 
+  onPttStop, 
+  pttStatus,
+  zelloUsers = [],
+  operatorName = 'Operator'
+}) {
   const [showChannels, setShowChannels] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState(mockChannels[0]);
   const [latency, setLatency] = useState(28);
+  const [showOperatorsModal, setShowOperatorsModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [firestoreMembers, setFirestoreMembers] = useState([]);
+
+  // Fetch Firestore registered members
+  useEffect(() => {
+    try {
+      const unsub = onSnapshot(collection(db, 'members'), (snapshot) => {
+        const docs = snapshot.docs.map(doc => {
+          const data = doc.data();
+          const name = data['First Name'] || data.firstName || data.fullName || data.name || doc.id;
+          const callsign = data['Fancy Callsign :'] || data.callsign || data['COMRADCOM Callsign'] || '—';
+          return {
+            id: doc.id,
+            name: typeof name === 'string' ? name : 'Registered Operator',
+            callsign: typeof callsign === 'string' ? callsign : '—',
+            position: data.Position || data.position || 'Radio Operator',
+            contact: data['Contact Number 1'] || data.contact || '',
+            address: data['Present Address:'] || data.address || '',
+            status: 'online'
+          };
+        });
+        setFirestoreMembers(docs);
+      }, (err) => {
+        console.warn('Firestore fallback to mock members:', err);
+      });
+      return () => unsub();
+    } catch (e) {
+      console.warn('Firestore connection warning:', e);
+    }
+  }, []);
+
+  // Compute total channel operators list ONLY for users INSIDE channel "146.020 Mhz"
+  const channelOperators = useMemo(() => {
+    if (!isConnected) return [];
+
+    const list = [];
+    const addedUsernames = new Set();
+
+    // 1. Current logged-in user
+    if (operatorName) {
+      const match = firestoreMembers.find(m => 
+        (m.name && m.name.toLowerCase() === operatorName.toLowerCase()) || 
+        (m.callsign && m.callsign.toLowerCase() === operatorName.toLowerCase())
+      );
+      list.push({
+        id: 'current-user',
+        name: match?.name || operatorName,
+        callsign: match?.callsign || operatorName.toUpperCase(),
+        position: match?.position || 'Active Radio Operator (You)',
+        contact: match?.contact || '',
+        address: match?.address || '',
+        status: isTransmitting ? 'transmitting' : isReceiving ? 'receiving' : 'online',
+        isCurrent: true
+      });
+      addedUsernames.add(operatorName.toLowerCase());
+      if (match?.name) addedUsernames.add(match.name.toLowerCase());
+      if (match?.callsign) addedUsernames.add(match.callsign.toLowerCase());
+    }
+
+    // 2. Users inside the Zello channel
+    if (Array.isArray(zelloUsers) && zelloUsers.length > 0) {
+      zelloUsers.forEach((u, i) => {
+        const uName = typeof u === 'string' ? u : u.username || u.name || u.callsign || `Operator-${i+1}`;
+        if (!addedUsernames.has(uName.toLowerCase())) {
+          addedUsernames.add(uName.toLowerCase());
+          
+          // Lookup matching member details in Firestore registry for rich metadata display
+          const match = firestoreMembers.find(m => 
+            (m.name && m.name.toLowerCase() === uName.toLowerCase()) || 
+            (m.callsign && m.callsign.toLowerCase() === uName.toLowerCase())
+          );
+
+          list.push({
+            id: `zello-${i}`,
+            name: match?.name || uName,
+            callsign: match?.callsign || uName.toUpperCase(),
+            position: match?.position || u.status || 'Channel Member',
+            contact: match?.contact || u.contact || '',
+            address: match?.address || '',
+            status: u.status || 'online'
+          });
+        }
+      });
+    }
+
+    return list;
+  }, [isConnected, operatorName, zelloUsers, firestoreMembers, isTransmitting, isReceiving]);
+
+  // Filtered operators for modal
+  const filteredOperators = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return channelOperators;
+    return channelOperators.filter(op => 
+      [op.name, op.callsign, op.position, op.address, op.contact]
+        .some(val => String(val || '').toLowerCase().includes(q))
+    );
+  }, [channelOperators, searchQuery]);
 
   // Simulate latency fluctuation
   useEffect(() => {
@@ -143,12 +255,19 @@ export function HomeScreen({ isConnected, isTransmitting, isReceiving, onPttStar
         </button>
       </div>
 
-      {/* Online Users Pill */}
-      <div className="px-4 py-1.5 rounded-full flex items-center space-x-2 cursor-pointer transition-all hover:bg-primary/10"
-        style={{ background: 'rgba(0,63,135,0.06)' }}>
-        <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-        <span className="text-[10px] font-bold text-primary tracking-wider">7 OPERATORS ONLINE</span>
-      </div>
+      {/* Online Users Pill - Clickable to open Channel Roster Modal */}
+      <button 
+        onClick={() => setShowOperatorsModal(true)}
+        className="px-4 py-2 rounded-full flex items-center space-x-2 cursor-pointer transition-all hover:bg-primary/15 active:scale-95 border border-primary/10 shadow-sm"
+        style={{ background: 'rgba(0,63,135,0.08)' }}
+        title="Click to view online channel operators"
+      >
+        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+        <span className="text-[11px] font-black text-primary tracking-wider uppercase">
+          {isConnected ? `${channelOperators.length} OPERATOR${channelOperators.length === 1 ? '' : 'S'} ONLINE` : '0 OPERATORS ONLINE'}
+        </span>
+        <UserCheck size={14} className="text-primary ml-1" />
+      </button>
 
       {/* Telemetry (Latency only, Battery removed) */}
       <div className="w-full">
@@ -178,6 +297,135 @@ export function HomeScreen({ isConnected, isTransmitting, isReceiving, onPttStar
         </div>
         <ChevronDown size={16} className="text-red-700/40 -rotate-90" />
       </div>
+
+      {/* Operators In Channel Modal Popup */}
+      {showOperatorsModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[85vh] animate-slide-up">
+            
+            {/* Modal Header */}
+            <div className="p-5 bg-gradient-to-r from-[#003F87] to-[#0056B3] text-white relative shrink-0">
+              <button 
+                onClick={() => setShowOperatorsModal(false)}
+                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition active:scale-95"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 rounded-2xl bg-white/20 border border-white/30 flex items-center justify-center text-white">
+                  <Users size={24} />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-xl font-black">Channel Operators</h3>
+                    <span className="px-2.5 py-0.5 rounded-full bg-green-500/30 text-green-200 text-[10px] font-black border border-green-400/40">
+                      {channelOperators.length} Active
+                    </span>
+                  </div>
+                  <p className="text-xs text-white/80 font-medium mt-0.5">
+                    Connected to <span className="font-bold">{selectedChannel.name}</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Search Input */}
+            <div className="p-4 border-b border-slate-100 bg-slate-50 shrink-0">
+              <div className="relative">
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input 
+                  type="text" 
+                  placeholder="Search operator name, callsign, or position..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-xs font-semibold text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+                />
+              </div>
+            </div>
+
+            {/* Operators List */}
+            <div className="p-4 space-y-3 overflow-y-auto flex-1 divide-y divide-slate-100">
+              {filteredOperators.length === 0 ? (
+                <div className="text-center py-10 text-slate-400">
+                  <Users size={36} className="mx-auto mb-2 text-slate-300" />
+                  <p className="text-xs font-bold">No operators match your search.</p>
+                </div>
+              ) : (
+                filteredOperators.map((op, idx) => {
+                  const initials = (op.name || 'OP').substring(0, 2).toUpperCase();
+                  const isTrans = op.status === 'transmitting';
+                  const isRecv = op.status === 'receiving';
+
+                  return (
+                    <div key={op.id || idx} className="pt-3 first:pt-0 flex items-center justify-between">
+                      <div className="flex items-center space-x-3 min-w-0">
+                        <div className={`relative w-10 h-10 rounded-2xl flex items-center justify-center font-black text-xs text-white shrink-0 shadow-sm ${
+                          op.isCurrent 
+                            ? 'bg-gradient-to-br from-blue-600 to-indigo-700' 
+                            : 'bg-gradient-to-br from-[#003F87] to-[#0056B3]'
+                        }`}>
+                          {initials}
+                          <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
+                            isTrans ? 'bg-red-500 animate-ping' : isRecv ? 'bg-green-500 animate-ping' : 'bg-green-500'
+                          }`} />
+                        </div>
+                        
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center space-x-1.5 truncate">
+                            <span className="text-xs font-black text-slate-900 truncate">{op.name}</span>
+                            {op.isCurrent && (
+                              <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[9px] font-black shrink-0">YOU</span>
+                            )}
+                          </div>
+                          <div className="flex items-center space-x-2 mt-0.5">
+                            <span className="text-[10px] font-mono font-bold text-primary">{op.callsign}</span>
+                            <span className="text-[10px] text-slate-400">•</span>
+                            <span className="text-[10px] text-slate-500 truncate">{op.position}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-2 shrink-0 ml-2">
+                        {op.contact && (
+                          <a 
+                            href={`tel:${op.contact}`} 
+                            className="w-8 h-8 rounded-full bg-green-50 hover:bg-green-100 flex items-center justify-center text-green-700 transition"
+                            title={`Call ${op.name}`}
+                          >
+                            <Phone size={14} />
+                          </a>
+                        )}
+                        <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider ${
+                          isTrans 
+                            ? 'bg-red-100 text-red-700 animate-pulse' 
+                            : isRecv 
+                              ? 'bg-green-100 text-green-700 animate-pulse' 
+                              : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {isTrans ? 'TALKING' : isRecv ? 'LISTENING' : 'ONLINE'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50 shrink-0 text-center">
+              <button
+                onClick={() => setShowOperatorsModal(false)}
+                className="w-full py-2.5 rounded-xl bg-primary text-white text-xs font-bold shadow-md hover:bg-primary/90 transition active:scale-95"
+              >
+                Close Roster
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { saveNotification } from '../services/notifications';
 
 export function DashboardScreen() {
   const [eqEvents, setEqEvents] = useState([]);
@@ -67,51 +68,98 @@ export function DashboardScreen() {
     );
   };
 
-  // 2. Request Notification Permission
+  // 2. Request Notification Permission + register Periodic Background Sync
   const requestNotificationPermission = async () => {
+    // Check if running on iPhone/iOS Safari outside PWA standalone mode
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+
     if (!('Notification' in window)) {
-      setNotifStatus('Notifications unavailable in this browser');
+      if (isIOS && !isStandalone) {
+        setNotifStatus("On iPhone, tap Share (⬆) and select 'Add to Home Screen' to enable alerts.");
+      } else {
+        setNotifStatus('Notifications are not supported by this browser.');
+      }
       return;
     }
+
     try {
       const perm = await Notification.requestPermission();
       setNotifPermission(perm);
       if (perm === 'granted') {
+        // Register Periodic Background Sync so alerts fire even when app is closed
+        if ('serviceWorker' in navigator && 'periodicSync' in ServiceWorkerRegistration.prototype) {
+          try {
+            const reg = await navigator.serviceWorker.ready;
+            await reg.periodicSync.register('comradcom-background-check', {
+              minInterval: 15 * 60 * 1000 // every 15 minutes minimum
+            });
+            console.log('[COMRADCOM] Periodic background sync registered.');
+          } catch (syncErr) {
+            console.warn('[COMRADCOM] Periodic sync not available:', syncErr);
+          }
+        }
+
         await sendAlertNotification(
           'COMRADCOM Emergency Alerts Enabled',
-          'You will receive weather advisories while COMRADCOM is active.'
+          'You will receive weather & emergency advisories in background.'
         );
-        setNotifStatus('Notifications are enabled on this device.');
+        setNotifStatus('Notifications are active. Alerts will arrive even when app is closed.');
       } else {
-        setNotifStatus('Notification permission denied');
+        setNotifStatus('Notification permission was denied in phone settings.');
       }
     } catch (e) {
-      console.error(e);
+      console.error('Notification permission error:', e);
+      setNotifStatus('Unable to request notification permission.');
     }
   };
 
-  // 3. Send Push/Local Notification
-  const sendAlertNotification = async (title, body, icon = '/comradcom_logo.png') => {
-    if (!('Notification' in window) || Notification.permission !== 'granted') return;
-    const options = {
+  // 3. Send Notification — always routed through the COMRADCOM Service Worker
+  //    so the app icon (pwa-192x192.png) appears instead of the browser logo.
+  const sendAlertNotification = async (title, body) => {
+    // Always save to in-app notification center history
+    saveNotification({
+      title,
       body,
-      icon,
-      badge: '/pwa-192x192.png',
-      tag: 'comradcom-weather-alert',
-      renotify: true,
-      vibrate: [200, 100, 200]
-    };
+      category: 'warning',
+      timestamp: new Date().toISOString()
+    });
+
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
     try {
-      // Installed PWAs (especially on Android and iPhone) reliably display
-      // notifications through the service worker, not the page constructor.
+      // PRIORITY: use the COMRADCOM service worker's showNotification().
+      // This ensures the icon shown is pwa-192x192.png (COMRADCOM logo)
+      // and NOT the browser icon (Edge, Chrome, etc.).
       if ('serviceWorker' in navigator) {
-        const registration = await navigator.serviceWorker.ready;
-        await registration.showNotification(title, options);
-      } else {
-        new Notification(title, options);
+        let reg;
+        try {
+          reg = await Promise.race([
+            navigator.serviceWorker.ready,
+            new Promise((_, rej) => setTimeout(() => rej(new Error('sw-timeout')), 3000))
+          ]);
+        } catch {
+          reg = await navigator.serviceWorker.getRegistration();
+        }
+
+        if (reg && typeof reg.showNotification === 'function') {
+          await reg.showNotification(title, {
+            body,
+            icon: '/pwa-192x192.png',
+            badge: '/badge.png',
+            tag: `comradcom-${Date.now()}`,
+            renotify: true,
+            data: { url: '/' }
+          });
+          return;
+        }
       }
+
+      // Desktop-only fallback (never used on Android/iOS successfully with SW)
+      try { new Notification(title, { body, icon: '/pwa-192x192.png', badge: '/badge.png' }); }
+      catch (e) { console.warn('[COMRADCOM] Direct Notification() failed:', e); }
     } catch (e) {
-      console.error('Notification trigger error:', e);
+      console.error('[COMRADCOM] Notification error:', e);
     }
   };
 

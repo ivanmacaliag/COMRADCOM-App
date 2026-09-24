@@ -45,20 +45,52 @@ export class ZelloService {
 
   handleCommand(data) {
     if (data.seq === 1) {
-      if (data.success) this.onStatus?.('Authenticated');
-      else this.onStatus?.(`Authentication failed${data.error ? `: ${data.error}` : '. Check your username and password.'}`);
+      if (data.success) {
+        this.onStatus?.('Authenticated');
+        this.getChannelStatus('146.020 Mhz');
+      } else {
+        this.onStatus?.(`Authentication failed${data.error ? `: ${data.error}` : '. Check your username and password.'}`);
+      }
     }
+
+    const usersArr = data.users || data.users_list || data.channel?.users;
+    const usersCnt = data.users_count !== undefined ? data.users_count : (data.user_count !== undefined ? data.user_count : data.channel?.users_count);
+
+    if (Array.isArray(usersArr)) {
+      this.onUsersUpdate?.(usersArr);
+    }
+    if (typeof usersCnt === 'number') {
+      this.onUsersCountUpdate?.(usersCnt);
+    }
+
     const pending = this.pendingRequests.get(data.seq);
     if (pending) {
       this.pendingRequests.delete(data.seq);
-      if (data.success) pending.resolve(data);
-      else pending.reject(new Error(data.error || data.error_message || 'Zello rejected the request.'));
+      if (data.success) {
+        if (usersArr || usersCnt !== undefined) {
+          if (Array.isArray(usersArr)) this.onUsersUpdate?.(usersArr);
+          if (typeof usersCnt === 'number') this.onUsersCountUpdate?.(usersCnt);
+        }
+        pending.resolve(data);
+      } else {
+        pending.reject(new Error(data.error || data.error_message || 'Zello rejected the request.'));
+      }
     }
     if (data.command === 'on_error') {
       this.pendingRequests.forEach(({ reject }) => reject(new Error(data.error || 'Zello server error.')));
       this.pendingRequests.clear();
     }
   }
+
+  getChannelStatus(channel = '146.020 Mhz') {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    this.ws.send(JSON.stringify({
+      command: 'get_channel_status',
+      seq: this.nextSequence++,
+      channel
+    }));
+  }
+
 
   startStream(channel) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return Promise.reject(new Error('Zello is not connected.'));
@@ -95,9 +127,9 @@ export class ZelloService {
   }
 
   sendLocation({ latitude, longitude, accuracy }) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
-    this.ws.send(JSON.stringify({ command: 'send_location', seq: this.nextSequence++, channel: '146.020 Mhz', latitude, longitude, accuracy }));
-    return true;
+    // Disabled: Sending 'send_location' over Zello Channel WebSocket posts a location message 
+    // to the channel chat/message history. We keep location tracking internal to the device.
+    return false;
   }
 
   disconnect() {

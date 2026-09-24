@@ -23,6 +23,7 @@ function App() {
   const [operatorName, setOperatorName] = useState('Operator');
   const [locationSharing, setLocationSharing] = useState(true);
   const [locationStatus, setLocationStatus] = useState('Location sharing is active.');
+  const [zelloUsers, setZelloUsers] = useState([]);
   
   const zelloRef = useRef(null);
   const audioRef = useRef(null);
@@ -32,6 +33,8 @@ function App() {
   const receivingTimeoutRef = useRef(null);
   const wakeLockRef = useRef(null);
   const isExitedRef = useRef(false);
+
+
 
   // Request all allowable browser/device permissions on initial boot up
   const requestAppPermissions = async () => {
@@ -47,23 +50,18 @@ function App() {
         }
       }
 
-      // 2. Location access prompt
+      // 2. Location access prompt (without sending to chat on boot/refresh)
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
-          () => { startLocationSharing(); },
+          (pos) => {
+            setLocationStatus(`Location tracking active (±${Math.round(pos.coords.accuracy)} m).`);
+          },
           (geoErr) => { console.warn('Location permission deferred:', geoErr); },
           { enableHighAccuracy: true, timeout: 10000 }
         );
       }
 
-      // 3. Notification permission prompt
-      if ('Notification' in window && Notification.permission === 'default') {
-        try {
-          await Notification.requestPermission();
-        } catch (notifErr) {
-          console.warn('Notification permission deferred:', notifErr);
-        }
-      }
+      // 3. Notifications: User taps 'Enable Alerts' in Dashboard to trigger native mobile prompt
     } catch (err) {
       console.error('Permission initialization error:', err);
     }
@@ -152,8 +150,19 @@ function App() {
     }
 
     zelloRef.current = new ZelloService('comradcom', username, password);
+    zelloRef.current.onUsersUpdate = (users) => {
+      setZelloUsers(users);
+    };
+    zelloRef.current.onUsersCountUpdate = (count) => {
+      if (typeof count === 'number') {
+        setZelloUsers((prev) => prev.length ? prev : Array.from({ length: count }, (_, i) => ({ username: `Operator ${i + 1}` })));
+      }
+    };
     zelloRef.current.onMessage = (opusPacket) => {
-      setIsReceiving(true);
+      setIsReceiving((prev) => {
+        if (!prev) playerRef.current?.reset();
+        return true;
+      });
       if (receivingTimeoutRef.current) clearTimeout(receivingTimeoutRef.current);
       receivingTimeoutRef.current = setTimeout(() => setIsReceiving(false), 1500);
       playerRef.current?.playOpusPacket(opusPacket);
@@ -224,13 +233,8 @@ function App() {
 
     locationWatchRef.current = navigator.geolocation.watchPosition(
       (position) => {
-        const sent = zelloRef.current?.sendLocation({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy
-        });
         setLocationSharing(true);
-        setLocationStatus(`Sharing live location (±${Math.round(position.coords.accuracy)} m).`);
+        setLocationStatus(`Live location tracking active (±${Math.round(position.coords.accuracy)} m).`);
       },
       (error) => {
         setLocationSharing(false);
@@ -297,6 +301,8 @@ function App() {
             onPttStart={handlePttStart} 
             onPttStop={handlePttStop} 
             pttStatus={pttStatus}
+            zelloUsers={zelloUsers}
+            operatorName={operatorName}
           />
         );
       case 'Dashboard':
@@ -331,6 +337,8 @@ function App() {
             onPttStart={handlePttStart} 
             onPttStop={handlePttStop} 
             pttStatus={pttStatus}
+            zelloUsers={zelloUsers}
+            operatorName={operatorName}
           />
         );
     }

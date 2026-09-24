@@ -10,11 +10,12 @@ export class AudioService {
   async startRecording() {
     try {
       this.isRecording = true;
-      // Using opus-recorder to encode mic audio directly to raw Opus packets (not ogg)
+      // Using opus-recorder to encode mic audio directly to raw Opus packets.
+      // Auto-detect input sample rate (e.g. 48000Hz) and resample to 16000Hz mono.
       this.recorder = new Recorder({
         encoderPath: '/encoderWorker.min.js',
         encoderSampleRate: 16000,
-        originalSampleRateOverride: 16000,
+        numberOfChannels: 1,
         streamPages: true, // We want raw opus packets as they are generated
         encoderApplication: 2048, // Voice
         encoderFrameSize: 20, // 20ms frames
@@ -26,12 +27,16 @@ export class AudioService {
         if (!this.isRecording) return;
         // opus-recorder emits Ogg pages. Zello needs the raw Opus packets inside
         // those pages, not the Ogg container/header bytes.
-        extractOpusPackets(oggPage).forEach((packet) => this.onAudioData?.(packet));
+        const packets = extractOpusPackets(oggPage);
+        for (const packet of packets) {
+          this.onAudioData?.(packet);
+        }
       };
 
       await this.recorder.start();
     } catch (err) {
       console.error('Error accessing microphone', err);
+      this.isRecording = false;
       throw err;
     }
   }
@@ -39,11 +44,14 @@ export class AudioService {
   stopRecording() {
     this.isRecording = false;
     if (this.recorder) {
-      this.recorder.stop();
+      try {
+        this.recorder.stop();
+      } catch (err) {
+        console.warn('Error stopping recorder:', err);
+      }
       this.recorder = null;
     }
   }
-
 }
 
 function extractOpusPackets(page) {
@@ -55,19 +63,30 @@ function extractOpusPackets(page) {
   let offset = 27 + segments;
   const packets = [];
   let packetParts = [];
+
   for (const length of lacing) {
     if (offset + length > bytes.length) return [];
     packetParts.push(bytes.slice(offset, offset + length));
     offset += length;
+
     if (length < 255) {
       const size = packetParts.reduce((total, part) => total + part.length, 0);
       const packet = new Uint8Array(size);
       let position = 0;
-      packetParts.forEach((part) => { packet.set(part, position); position += part.length; });
+      packetParts.forEach((part) => {
+        packet.set(part, position);
+        position += part.length;
+      });
       packetParts = [];
+
       const prefix = String.fromCharCode(...packet.slice(0, 8));
-      if (prefix !== 'OpusHead' && prefix !== 'OpusTags') packets.push(packet.buffer);
+      if (prefix !== 'OpusHead' && prefix !== 'OpusTags') {
+        // Return a fresh Uint8Array buffer slice to guarantee clean memory boundaries
+        const cleanBuffer = packet.buffer.slice(packet.byteOffset, packet.byteOffset + packet.byteLength);
+        packets.push(cleanBuffer);
+      }
     }
   }
   return packets;
 }
+
