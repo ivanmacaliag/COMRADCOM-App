@@ -33,6 +33,42 @@ function App() {
   const receivingTimeoutRef = useRef(null);
   const wakeLockRef = useRef(null);
   const isExitedRef = useRef(false);
+  const screenStackRef = useRef(['Talk']);
+
+  // Handle mobile Back Button / Gesture navigation
+  // Prevent closing the PWA when back button is pressed on phone.
+  useEffect(() => {
+    // Push an initial state into history so there is a state to pop
+    window.history.replaceState({ screen: currentScreen }, '');
+    window.history.pushState({ screen: currentScreen }, '');
+
+    const handlePopState = (e) => {
+      // If the app was intentionally exited via 3-dot menu, allow it
+      if (isExitedRef.current) return;
+
+      // Keep pushing state to prevent browser/PWA from exiting to OS or previous web page
+      window.history.pushState({ screen: currentScreen }, '');
+
+      // If user is not on Talk (main screen), navigate backward to Talk or previous screen
+      if (screenStackRef.current.length > 1) {
+        screenStackRef.current.pop();
+        const prevScreen = screenStackRef.current[screenStackRef.current.length - 1] || 'Talk';
+        setCurrentScreen(prevScreen);
+      } else if (currentScreen !== 'Talk') {
+        setCurrentScreen('Talk');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [currentScreen]);
+
+  const navigateToScreen = (newScreen) => {
+    if (newScreen !== currentScreen) {
+      screenStackRef.current.push(newScreen);
+      setCurrentScreen(newScreen);
+    }
+  };
 
 
 
@@ -347,7 +383,7 @@ function App() {
   return (
     <MasterLayout 
       currentScreen={currentScreen} 
-      setCurrentScreen={setCurrentScreen}
+      setCurrentScreen={navigateToScreen}
       isConnected={isConnected}
       onLoginClick={() => setLoginOpen(true)}
       onDisconnect={handleDisconnect}

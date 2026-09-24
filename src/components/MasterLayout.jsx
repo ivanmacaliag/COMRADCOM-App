@@ -278,6 +278,24 @@ export function MasterLayout({
             )}
           </div>
 
+          {/* 3-Dot App Menu (Exit App) */}
+          <div className="relative">
+            <button onClick={() => setShowAppMenu(!showAppMenu)} aria-label="App menu"
+              className="w-8 h-8 rounded-full flex items-center justify-center transition-all hover:bg-white/10"
+              style={{ background: 'rgba(255,255,255,0.1)' }}
+              title="More options">
+              <MoreVertical size={18} className="text-white/80" />
+            </button>
+            {showAppMenu && <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowAppMenu(false)} />
+              <div className="absolute right-0 top-full mt-2 w-48 bg-white shadow-2xl rounded-2xl border border-gray-100 p-2 z-50 animate-slide-up">
+                <button onClick={() => { setShowAppMenu(false); onExit(); }} className="w-full flex items-center gap-3 p-3 hover:bg-red-50 rounded-xl font-bold text-sm text-red-600 transition-colors">
+                  <span className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center"><X size={16} /></span> Exit app
+                </button>
+              </div>
+            </>}
+          </div>
+
           {!isConnected ? (
             <button onClick={onLoginClick} 
               className="flex items-center text-white font-bold text-[10px] sm:text-xs px-2.5 sm:px-3 py-1.5 rounded-lg transition-all hover:bg-white/10 active:scale-95"
@@ -286,20 +304,6 @@ export function MasterLayout({
             </button>
           ) : (
             <div className="relative flex items-center gap-1">
-              {/* 3-Dot App Menu */}
-              <button onClick={() => setShowAppMenu(!showAppMenu)} aria-label="App menu"
-                className="w-8 h-8 rounded-full flex items-center justify-center transition-all hover:bg-white/10"
-                style={{ background: 'rgba(255,255,255,0.1)' }}>
-                <MoreVertical size={18} className="text-white/80" />
-              </button>
-              {showAppMenu && <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowAppMenu(false)} />
-                <div className="absolute right-10 top-full mt-2 w-48 bg-white shadow-2xl rounded-2xl border border-gray-100 p-2 z-50">
-                  <button onClick={() => { setShowAppMenu(false); onExit(); }} className="w-full flex items-center gap-3 p-3 hover:bg-red-50 rounded-xl font-bold text-sm text-red-600 transition-colors">
-                    <span className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center"><X size={16} /></span> Exit app
-                  </button>
-                </div>
-              </>}
               <div className="relative">
               <button onClick={() => setShowProfileMenu(!showProfileMenu)}
                 className="w-8 h-8 rounded-full flex items-center justify-center transition-all hover:bg-white/10"
