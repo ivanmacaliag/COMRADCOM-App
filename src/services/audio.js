@@ -14,6 +14,7 @@ export class AudioService {
       this.recorder = new Recorder({
         encoderPath: '/encoderWorker.min.js',
         encoderSampleRate: 16000,
+        originalSampleRateOverride: 16000,
         streamPages: true, // We want raw opus packets as they are generated
         encoderApplication: 2048, // Voice
         encoderFrameSize: 20, // 20ms frames

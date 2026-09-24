@@ -93,10 +93,7 @@ function App() {
   useEffect(() => {
     audioRef.current = new AudioService();
     playerRef.current = new PlayerService();
-
-    audioRef.current.onAudioData = (buffer) => {
-      zelloRef.current?.sendAudioChunk(buffer);
-    };
+    audioRef.current.onAudioData = (buffer) => zelloRef.current?.sendAudioChunk(buffer);
 
     // Prompt for all permissions on boot
     requestAppPermissions();
@@ -146,9 +143,7 @@ function App() {
     setLoginStatus('Connecting to COMRADCOM…');
     isExitedRef.current = false;
     
-    if (!playerRef.current) {
-      playerRef.current = new PlayerService();
-    }
+    if (!playerRef.current) playerRef.current = new PlayerService();
     if (userInitiated) {
       await playerRef.current.init();
       playerRef.current.resume();
@@ -157,19 +152,13 @@ function App() {
     }
 
     zelloRef.current = new ZelloService('comradcom', username, password);
-    
     zelloRef.current.onMessage = (opusPacket) => {
       setIsReceiving(true);
       if (receivingTimeoutRef.current) clearTimeout(receivingTimeoutRef.current);
-      receivingTimeoutRef.current = setTimeout(() => {
-        setIsReceiving(false);
-      }, 1500);
-
-      if (playerRef.current) {
-        playerRef.current.playOpusPacket(opusPacket);
-      }
+      receivingTimeoutRef.current = setTimeout(() => setIsReceiving(false), 1500);
+      playerRef.current?.playOpusPacket(opusPacket);
     };
-
+    
     zelloRef.current.onStatus = (newStatus) => {
       setStatus(newStatus);
       if (newStatus === 'Authenticated') {
@@ -261,12 +250,11 @@ function App() {
   const handlePttStart = async () => {
     if (!isConnected) return;
     pttRequestedRef.current = true;
-    
     if (playerRef.current) {
       await playerRef.current.init();
       playerRef.current.resume();
     }
-
+    
     try {
       setPttStatus('Opening radio channel…');
       await zelloRef.current.startStream('146.020 Mhz');

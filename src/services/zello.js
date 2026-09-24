@@ -8,87 +8,45 @@ export class ZelloService {
     this.onStatus = null;
     this.nextSequence = 2;
     this.pendingRequests = new Map();
+    this.currentStreamId = null;
   }
 
   connect() {
     return new Promise((resolve, reject) => {
       try {
-        const url = `wss://zellowork.io/ws/${this.network}`;
-        this.ws = new WebSocket(url);
-
+        this.ws = new WebSocket(`wss://zellowork.io/ws/${this.network}`);
+        this.ws.binaryType = 'arraybuffer';
         this.ws.onopen = () => {
-          if (this.onStatus) this.onStatus('Connected, authenticating...');
-          this.authenticate();
+          this.onStatus?.('Connected, authenticating...');
+          this.ws.send(JSON.stringify({
+            command: 'logon', seq: 1, username: this.username,
+            password: this.password, channels: ['146.020 Mhz']
+          }));
+          resolve();
         };
-
         this.ws.onmessage = async (event) => {
           if (typeof event.data === 'string') {
-            const data = JSON.parse(event.data);
-            console.log('WS Message:', data);
-            this.handleCommand(data);
-          } else {
-            // Binary audio data
-            let buffer;
-            if (event.data instanceof Blob) {
-              buffer = await event.data.arrayBuffer();
-            } else {
-              buffer = event.data;
-            }
-            
-            const view = new DataView(buffer);
-            let headerSize = 8;
-            // Server to client audio packets usually start with 0x01
-            if (view.byteLength > 0 && view.getUint8(0) === 1) {
-              headerSize = 9;
-            }
-
-            if (buffer.byteLength > headerSize) {
-              const payload = new Uint8Array(buffer, headerSize);
-              if (this.onMessage) this.onMessage(payload);
-            }
+            this.handleCommand(JSON.parse(event.data));
+            return;
+          }
+          const buffer = event.data instanceof Blob ? await event.data.arrayBuffer() : event.data;
+          if (buffer.byteLength > 9 && new DataView(buffer).getUint8(0) === 0x01) {
+            this.onMessage?.(new Uint8Array(buffer, 9));
           }
         };
-
         this.ws.onerror = (error) => {
-          console.error("Zello WS Error", error);
-          if (this.onStatus) this.onStatus('Error connecting to Zello');
+          this.onStatus?.('Error connecting to Zello');
           reject(error);
         };
-
-        this.ws.onclose = (event) => {
-          console.log('WS Closed:', event.code, event.reason);
-          if (this.onStatus) this.onStatus('Disconnected (' + event.code + ')');
-        };
-
-        resolve();
-      } catch (err) {
-        reject(err);
-      }
+        this.ws.onclose = (event) => this.onStatus?.(`Disconnected (${event.code})`);
+      } catch (error) { reject(error); }
     });
   }
 
-  authenticate() {
-    // Send logon command based on Zello API Spec
-    // TODO: Hash password / Token logic as required by Zello API
-    const logonCmd = {
-      command: 'logon',
-      seq: 1,
-      username: this.username,
-      password: this.password,
-      channels: ['146.020 Mhz']
-    };
-    this.ws.send(JSON.stringify(logonCmd));
-  }
-
   handleCommand(data) {
-    console.log('Received command:', data);
-    // Sequence 1 is our logon command
     if (data.seq === 1) {
-      if (data.success) {
-        if (this.onStatus) this.onStatus('Authenticated');
-      } else if (this.onStatus) {
-        this.onStatus(`Authentication failed${data.error ? `: ${data.error}` : '. Check your username and password.'}`);
-      }
+      if (data.success) this.onStatus?.('Authenticated');
+      else this.onStatus?.(`Authentication failed${data.error ? `: ${data.error}` : '. Check your username and password.'}`);
     }
     const pending = this.pendingRequests.get(data.seq);
     if (pending) {
@@ -102,87 +60,48 @@ export class ZelloService {
     }
   }
 
-  sendLocation({ latitude, longitude, accuracy }) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
-    this.ws.send(JSON.stringify({
-      command: 'send_location',
-      seq: this.nextSequence++,
-      latitude,
-      longitude,
-      accuracy
-    }));
-    return true;
-  }
-
   startStream(channel) {
-    this.packetId = 0;
-    const seq = this.nextSequence++;
-    // Command to start an outgoing audio stream
-    // codec_header for 16000Hz, 1 frame/packet, 20ms frame size: [128, 62, 1, 20] -> gD4BFA==
-    const startCmd = {
-      command: 'start_stream',
-      seq,
-      channel,
-      type: 'audio',
-      codec: 'opus',
-      codec_header: 'gD4BFA==', 
-      packet_duration: 20
-    };
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return Promise.reject(new Error('Zello is not connected.'));
+    const seq = this.nextSequence++;
+    // 16 kHz, one 20 ms Opus frame per packet. This exactly matches AudioService.
+    const command = { command: 'start_stream', seq, channel, type: 'audio', codec: 'opus', codec_header: 'gD4BFA==', packet_duration: 20 };
     return new Promise((resolve, reject) => {
       const timeoutId = window.setTimeout(() => {
-        if (this.pendingRequests.has(seq)) {
-          this.pendingRequests.delete(seq);
-          reject(new Error('Zello did not open the radio channel. Check channel access and connection.'));
-        }
+        if (this.pendingRequests.delete(seq)) reject(new Error('Zello did not open the radio channel. Check channel access and connection.'));
       }, 8000);
       this.pendingRequests.set(seq, {
         resolve: (data) => { window.clearTimeout(timeoutId); this.currentStreamId = data.stream_id; resolve(data); },
         reject: (error) => { window.clearTimeout(timeoutId); reject(error); }
       });
-      this.ws.send(JSON.stringify(startCmd));
+      this.ws.send(JSON.stringify(command));
     });
   }
 
   sendAudioChunk(opusPayload) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN && this.currentStreamId) {
-      this.packetId++;
-      
-      // Zello Channel API: type (0x01) + stream ID + packet ID in network byte order.
-      // packet ID is ignored for client-to-server audio and must be all zeroes.
-      const headerLength = 9;
-      const buffer = new ArrayBuffer(headerLength + opusPayload.byteLength);
-      const view = new DataView(buffer);
-      
-      view.setUint8(0, 0x01);
-      view.setUint32(1, this.currentStreamId, false);
-      view.setUint32(5, 0, false);
-      
-      // Write Opus Payload
-      const payloadView = new Uint8Array(buffer, headerLength);
-      payloadView.set(new Uint8Array(opusPayload));
-      
-      this.ws.send(buffer);
-    }
+    if (!this.currentStreamId || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    const packet = new ArrayBuffer(9 + opusPayload.byteLength);
+    const view = new DataView(packet);
+    view.setUint8(0, 0x01);
+    view.setUint32(1, this.currentStreamId, false);
+    view.setUint32(5, 0, false); // Required zeroes for client-to-server packets.
+    new Uint8Array(packet, 9).set(new Uint8Array(opusPayload));
+    this.ws.send(packet);
   }
 
   stopStream() {
     if (!this.currentStreamId) return;
-    const stopCmd = {
-      command: 'stop_stream',
-      seq: this.nextSequence++,
-      stream_id: this.currentStreamId,
-      channel: '146.020 Mhz'
-    };
-    this.ws.send(JSON.stringify(stopCmd));
+    this.ws?.send(JSON.stringify({ command: 'stop_stream', seq: this.nextSequence++, stream_id: this.currentStreamId, channel: '146.020 Mhz' }));
     this.currentStreamId = null;
-    this.packetId = 0;
+  }
+
+  sendLocation({ latitude, longitude, accuracy }) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+    this.ws.send(JSON.stringify({ command: 'send_location', seq: this.nextSequence++, channel: '146.020 Mhz', latitude, longitude, accuracy }));
+    return true;
   }
 
   disconnect() {
     this.stopStream();
-    if (this.ws) {
-      this.ws.close();
-    }
+    this.ws?.close();
   }
 }
