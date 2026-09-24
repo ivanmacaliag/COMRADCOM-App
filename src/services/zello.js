@@ -109,7 +109,6 @@ export class ZelloService {
     this.ws.send(JSON.stringify({
       command: 'send_location',
       seq: this.nextSequence++,
-      channel: '146.020 Mhz',
       latitude,
       longitude,
       accuracy
@@ -158,24 +157,25 @@ export class ZelloService {
 
   sendAudioChunk(opusPayload) {
     if (!this.currentStreamId && this.openingStreamSeq) {
-      // Preserve the beginning of a transmission while the server approves it.
-      // Keep only one second so a slow connection cannot grow memory indefinitely.
+      // Preserve only the start of a transmission while the server approves it.
+      // A short queue prevents an audible one-second catch-up burst on receivers.
       this.pendingAudio.push(opusPayload);
-      if (this.pendingAudio.length > 50) this.pendingAudio.shift();
+      if (this.pendingAudio.length > 12) this.pendingAudio.shift();
       return;
     }
     if (this.ws && this.ws.readyState === WebSocket.OPEN && this.currentStreamId) {
       this.packetId++;
       
       // Zello Channel API: type (0x01) + stream ID + packet ID in network byte order.
-      // packet ID is ignored for client-to-server audio and must be all zeroes.
+      // Packets need monotonically increasing IDs; reusing zero makes receivers
+      // treat live audio as duplicate/out-of-order data, causing robotic playback.
       const headerLength = 9;
       const buffer = new ArrayBuffer(headerLength + opusPayload.byteLength);
       const view = new DataView(buffer);
       
       view.setUint8(0, 0x01);
       view.setUint32(1, this.currentStreamId, false);
-      view.setUint32(5, 0, false);
+      view.setUint32(5, this.packetId, false);
       
       // Write Opus Payload
       const payloadView = new Uint8Array(buffer, headerLength);
