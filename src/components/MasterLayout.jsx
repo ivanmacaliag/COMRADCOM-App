@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Radio, Users, AlertTriangle, Globe, Rss, UserCircle, LayoutDashboard,
   LogIn, PowerOff, MoreVertical, X, ShieldCheck, RadioTower, LockKeyhole,
@@ -31,6 +31,8 @@ export function MasterLayout({
   const [selectedNotif, setSelectedNotif] = useState(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const headerRef = useRef(null);
+  const navRef = useRef(null);
 
   useEffect(() => {
     const handleUpdate = (e) => {
@@ -42,6 +44,28 @@ export function MasterLayout({
     };
     window.addEventListener('comradcom-notification-updated', handleUpdate);
     return () => window.removeEventListener('comradcom-notification-updated', handleUpdate);
+  }, []);
+
+  // Measure header & nav heights, inject as CSS vars so the scroll area
+  // can add exactly the right padding without hard-coding pixel values.
+  useEffect(() => {
+    const update = () => {
+      if (headerRef.current) {
+        document.documentElement.style.setProperty(
+          '--header-h', `${headerRef.current.getBoundingClientRect().height}px`
+        );
+      }
+      if (navRef.current) {
+        document.documentElement.style.setProperty(
+          '--footer-h', `${navRef.current.getBoundingClientRect().height}px`
+        );
+      }
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    if (headerRef.current) ro.observe(headerRef.current);
+    if (navRef.current) ro.observe(navRef.current);
+    return () => ro.disconnect();
   }, []);
 
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -112,15 +136,19 @@ export function MasterLayout({
   });
 
   return (
-    <div className="flex flex-col h-screen w-full max-w-[1600px] relative overflow-hidden bg-background lg:h-[calc(100vh-2rem)] lg:rounded-3xl lg:shadow-2xl lg:ring-1 lg:ring-slate-200"
-      style={{ background: 'linear-gradient(180deg, #F0F2F5 0%, #E8EDF5 100%)' }}>
+    <div className="flex flex-col w-full max-w-[1600px] relative bg-background lg:h-[calc(100vh-2rem)] lg:rounded-3xl lg:shadow-2xl lg:ring-1 lg:ring-slate-200 lg:overflow-hidden"
+      style={{ background: 'linear-gradient(180deg, #F0F2F5 0%, #E8EDF5 100%)', minHeight: '100dvh' }}>
       
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 sm:px-5 py-3 lg:px-8 lg:py-4 z-20 relative"
-        style={{ 
+      {/* Header — fixed on mobile so it never moves during scroll/pull-to-refresh;
+           on desktop (lg+) it reverts to normal in-flow positioning inside the card */}
+      <header
+        ref={headerRef}
+        className="flex items-center justify-between px-4 sm:px-5 py-3 lg:px-8 lg:py-4 z-20 fixed top-0 left-0 right-0 lg:static lg:top-auto lg:left-auto lg:right-auto"
+        style={{
           background: 'linear-gradient(135deg, #003F87 0%, #0056B3 100%)',
-          boxShadow: '0 4px 20px rgba(0,63,135,0.3)'
-        }}>
+          boxShadow: '0 4px 20px rgba(0,63,135,0.3)',
+        }}
+      >
         <div className="flex items-center cursor-pointer" onClick={() => setCurrentScreen('Dashboard')}>
           <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center overflow-hidden bg-white"
             style={{ 
@@ -392,22 +420,7 @@ export function MasterLayout({
         </div>
       )}
 
-      {/* Main Content Area */}
-      <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white/90 p-4 lg:flex lg:flex-col">
-          <div className="mb-6 px-3 pt-2">
-            <p className="text-[10px] font-black tracking-[0.18em] text-slate-400">OPERATIONS</p>
-            <p className="mt-1 text-sm font-bold text-slate-700">COMRADCOM Console</p>
-          </div>
-          <nav><DesktopNavigationItems /></nav>
-          <div className="mt-auto rounded-2xl bg-primary/5 p-4">
-            <LayoutDashboard size={18} className="text-primary" />
-            <p className="mt-2 text-xs font-bold text-slate-700">Network workspace</p>
-            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">Live communication, member directory, and field updates in one place.</p>
-          </div>
-        </aside>
-        <main className="flex-1 overflow-y-auto overflow-x-hidden relative">{children}</main>
-      </div>
+
 
       {loginOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-100">
@@ -433,14 +446,19 @@ export function MasterLayout({
         </div>
       )}
 
-      {/* Bottom Navigation (Phone Menu) */}
-      <nav className="z-20 relative lg:hidden"
-        style={{ 
-          background: 'rgba(255,255,255,0.95)',
+      {/* Bottom Navigation — fixed on mobile so it never moves;
+           hidden on desktop (lg+) */}
+      <nav
+        ref={navRef}
+        className="z-20 lg:hidden fixed bottom-0 left-0 right-0"
+        style={{
+          background: 'rgba(255,255,255,0.97)',
           backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
           boxShadow: '0 -4px 30px rgba(0,0,0,0.08)',
-          borderTop: '1px solid rgba(0,63,135,0.08)'
-        }}>
+          borderTop: '1px solid rgba(0,63,135,0.08)',
+        }}
+      >
         <div className="flex items-center justify-around px-2 py-1 relative">
           {mobileNavItems.map((item) => {
             const Icon = item.icon;

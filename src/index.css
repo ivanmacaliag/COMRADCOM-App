@@ -38,6 +38,10 @@
   background-color: var(--color-background);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* Defaults — overridden at runtime by ResizeObserver in MasterLayout */
+  --header-h: 56px;
+  --footer-h: 68px;
 }
 
 * { box-sizing: border-box; }
