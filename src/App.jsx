@@ -1,4 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  activateKeepAlive,
+  resumeSilentAudio,
+  stopSilentAudio,
+  persistAppState,
+  restoreAppState,
+  clearPersistedState
+} from './services/backgroundKeepAlive';
 import { ZelloService } from './services/zello';
 import { AudioService } from './services/audio';
 import { PlayerService } from './services/player';
@@ -18,6 +26,7 @@ function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [isReceiving, setIsReceiving] = useState(false);
   const [pttStatus, setPttStatus] = useState('');
+  const [exitToast, setExitToast] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [loginStatus, setLoginStatus] = useState('');
   const [operatorName, setOperatorName] = useState('Operator');
@@ -34,28 +43,53 @@ function App() {
   const wakeLockRef = useRef(null);
   const isExitedRef = useRef(false);
   const screenStackRef = useRef(['Talk']);
+  const backPressCountRef = useRef(0);
+  const backPressTimerRef = useRef(null);
+  const exitToastTimerRef = useRef(null);
 
-  // Handle mobile Back Button / Gesture navigation
-  // Prevent closing the PWA when back button is pressed on phone.
+  // ── Back Button Trap ─────────────────────────────────────────────────────────
+  // Prevents the OS from closing the PWA on back press.
+  // • While navigating between screens: goes back to the previous screen.
+  // • While on the root screen: requires TWO back presses within 2 s to exit;
+  //   shows a toast after the first press.
   useEffect(() => {
-    // Push an initial state into history so there is a state to pop
-    window.history.replaceState({ screen: currentScreen }, '');
-    window.history.pushState({ screen: currentScreen }, '');
+    // Always keep at least one extra history entry ahead so the PWA has
+    // something to pop before the browser navigates away.
+    window.history.replaceState({ screen: currentScreen, comradcom: true }, '');
+    window.history.pushState({ screen: currentScreen, comradcom: true }, '');
 
-    const handlePopState = (e) => {
-      // If the app was intentionally exited via 3-dot menu, allow it
+    const handlePopState = () => {
+      // Allow exit only when the user clicked the in-app Exit button
       if (isExitedRef.current) return;
 
-      // Keep pushing state to prevent browser/PWA from exiting to OS or previous web page
-      window.history.pushState({ screen: currentScreen }, '');
+      // Immediately re-push so we can never accidentally leave the PWA
+      window.history.pushState({ screen: currentScreen, comradcom: true }, '');
 
-      // If user is not on Talk (main screen), navigate backward to Talk or previous screen
       if (screenStackRef.current.length > 1) {
+        // Navigate back within the app
         screenStackRef.current.pop();
         const prevScreen = screenStackRef.current[screenStackRef.current.length - 1] || 'Talk';
         setCurrentScreen(prevScreen);
-      } else if (currentScreen !== 'Talk') {
-        setCurrentScreen('Talk');
+        backPressCountRef.current = 0;
+      } else {
+        // Already at root – double-press to exit
+        backPressCountRef.current += 1;
+
+        if (backPressCountRef.current === 1) {
+          // First press: show toast
+          setExitToast(true);
+          clearTimeout(exitToastTimerRef.current);
+          exitToastTimerRef.current = setTimeout(() => {
+            setExitToast(false);
+            backPressCountRef.current = 0;
+          }, 2500);
+        } else {
+          // Second press within 2.5 s: allow real exit
+          clearTimeout(exitToastTimerRef.current);
+          setExitToast(false);
+          isExitedRef.current = true;
+          window.history.go(-2); // pop the two synthetic entries we pushed
+        }
       }
     };
 
@@ -67,6 +101,8 @@ function App() {
     if (newScreen !== currentScreen) {
       screenStackRef.current.push(newScreen);
       setCurrentScreen(newScreen);
+      // Persist the new screen so reopening restores to this screen
+      persistAppState({ currentScreen: newScreen, operatorName, isConnected, locationSharing });
     }
   };
 
@@ -133,10 +169,18 @@ function App() {
     requestAppPermissions();
     requestWakeLock();
 
-    // Re-acquire WakeLock & re-sync location when app comes back to foreground
+    // Restore last screen from persisted state
+    const savedState = restoreAppState();
+    if (savedState?.currentScreen && savedState.currentScreen !== 'Talk') {
+      setCurrentScreen(savedState.currentScreen);
+      screenStackRef.current = ['Talk', savedState.currentScreen];
+    }
+
+    // Re-acquire WakeLock, resume silent audio & re-sync location when app comes back to foreground
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && !isExitedRef.current) {
         requestWakeLock();
+        resumeSilentAudio();
         if (isConnected && !locationWatchRef.current) {
           startLocationSharing();
         }
@@ -149,6 +193,7 @@ function App() {
       if (audioRef.current) audioRef.current.stopRecording();
       if (locationWatchRef.current !== null) navigator.geolocation?.clearWatch(locationWatchRef.current);
       if (receivingTimeoutRef.current) clearTimeout(receivingTimeoutRef.current);
+      clearTimeout(exitToastTimerRef.current);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       releaseWakeLock();
     };
@@ -183,6 +228,8 @@ function App() {
       playerRef.current.resume();
       // Prompt permissions again if user initiates login
       requestAppPermissions();
+      // Start silent audio loop + Media Session from this user gesture
+      activateKeepAlive();
     }
 
     zelloRef.current = new ZelloService('comradcom', username, password);
@@ -215,6 +262,8 @@ function App() {
         // Auto-enable live location sharing when connected
         startLocationSharing();
         requestWakeLock();
+        // Persist connected state so re-opening restores context
+        persistAppState({ currentScreen, operatorName: username, isConnected: true, locationSharing: true });
         setTimeout(() => setLoginOpen(false), 500);
       } else if (newStatus === 'Disconnected' || newStatus.includes('Error')) {
         setIsConnected(false);
@@ -248,6 +297,8 @@ function App() {
     isExitedRef.current = true;
     stopLocationSharing();
     releaseWakeLock();
+    stopSilentAudio();
+    clearPersistedState();
     zelloRef.current?.disconnect();
     setIsConnected(false);
     setStatus('Exited');
@@ -381,20 +432,48 @@ function App() {
   };
 
   return (
-    <MasterLayout 
-      currentScreen={currentScreen} 
-      setCurrentScreen={navigateToScreen}
-      isConnected={isConnected}
-      onLoginClick={() => setLoginOpen(true)}
-      onDisconnect={handleDisconnect}
-      onExit={handleExit}
-      loginOpen={loginOpen}
-      onLoginClose={() => { if (isConnected) { setLoginOpen(false); setLoginStatus(''); } }}
-      onLoginSubmit={handleConnect}
-      loginStatus={loginStatus}
-    >
-      {renderScreen()}
-    </MasterLayout>
+    <>
+      <MasterLayout 
+        currentScreen={currentScreen} 
+        setCurrentScreen={navigateToScreen}
+        isConnected={isConnected}
+        onLoginClick={() => setLoginOpen(true)}
+        onDisconnect={handleDisconnect}
+        onExit={handleExit}
+        loginOpen={loginOpen}
+        onLoginClose={() => { if (isConnected) { setLoginOpen(false); setLoginStatus(''); } }}
+        onLoginSubmit={handleConnect}
+        loginStatus={loginStatus}
+      >
+        {renderScreen()}
+      </MasterLayout>
+
+      {/* Back-to-exit toast */}
+      {exitToast && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '80px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(0,0,0,0.82)',
+            color: '#fff',
+            padding: '10px 22px',
+            borderRadius: '24px',
+            fontSize: '14px',
+            fontWeight: 500,
+            letterSpacing: '0.01em',
+            zIndex: 99999,
+            pointerEvents: 'none',
+            whiteSpace: 'nowrap',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+            animation: 'comradcomFadeIn 0.2s ease'
+          }}
+        >
+          📻 Press back again to exit COMRADCOM
+        </div>
+      )}
+    </>
   );
 }
 

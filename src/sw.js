@@ -68,6 +68,29 @@ self.addEventListener('periodicsync', (event) => {
   }
 });
 
+// ───────────────────────────────────────────────────
+// BACKGROUND SYNC — retry queued data after app close
+// Fires when connectivity is restored even if app UI is closed (Android).
+// ───────────────────────────────────────────────────
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'comradcom-sync') {
+    event.waitUntil(handleBackgroundSync());
+  }
+});
+
+async function handleBackgroundSync() {
+  try {
+    // Notify any open clients that the sync fired
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clients) {
+      client.postMessage({ type: 'BACKGROUND_SYNC_FIRED', tag: 'comradcom-sync' });
+    }
+    console.info('[COMRADCOM SW] Background sync handler fired.');
+  } catch (err) {
+    console.warn('[COMRADCOM SW] Background sync error:', err);
+  }
+}
+
 async function runBackgroundCheck() {
   try {
     // ---- Weather Check (Open-Meteo, default: Iligan City) ----

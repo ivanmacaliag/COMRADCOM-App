@@ -17,6 +17,11 @@
   100% { transform: scale(1.3); opacity: 0; }
 }
 
+@keyframes comradcomFadeIn {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
 @keyframes pulse-glow {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.04); }
