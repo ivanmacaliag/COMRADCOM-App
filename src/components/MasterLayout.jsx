@@ -420,7 +420,19 @@ export function MasterLayout({
         </div>
       )}
 
-
+      {/* Main Content Area */}
+      {/* pt compensates for fixed header on mobile; pb compensates for fixed bottom nav */}
+      <div
+        className="flex flex-1 flex-col overflow-y-auto lg:min-h-0 lg:flex-1"
+        style={{
+          paddingTop: 'var(--header-h, 56px)',
+          paddingBottom: 'var(--footer-h, 64px)',
+        }}
+      >
+        <main className="flex-1 overflow-y-auto">
+          {children}
+        </main>
+      </div>
 
       {loginOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-100">
